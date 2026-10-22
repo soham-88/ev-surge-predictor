@@ -1,0 +1,69 @@
+# Environments
+.env
+.env.*
+!.env.example
+.venv
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+.pytest_cache/
+*.log
+parts/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+
+# Database
+backend/app.db
+*.sqlite3
+*.sqlite
+*.db
+
+# Uploads & Scratch
+uploads/
+scratch/
+
+# ML Models & Data
+# Files > 5 MB: shap_explainer.joblib is ~6.1 MB (rebuilt via python pipeline/train.py)
+# Models under 5 MB (xgboost_model, scaler, feature_names, metrics) remain tracked
+backend/saved_models/shap_explainer.joblib
+
+# OS & Editor Junk
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
