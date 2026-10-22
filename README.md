@@ -1,317 +1,305 @@
-# EV Surge Predictor (Grid Pulse)
+<div align="center">
 
-> **Predictive Load Forecasting & Autonomous Demand-Response Throttling Platform for Commercial EV Charging Stations**
+# ⚡ EV Surge Predictor — Grid Pulse
 
-[![React](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![XGBoost](https://img.shields.io/badge/XGBoost-3.4-EB4034?style=for-the-badge&logo=xgboost&logoColor=white)](https://xgboost.readthedocs.io/)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-4.0-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+**Predict EV charging load 2 hours ahead. Explain every prediction. Protect the transformer before it overloads.**
 
----
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-EB4034?style=for-the-badge&logo=xgboost&logoColor=white)](https://xgboost.readthedocs.io/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Tailwind](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-## ⚡ 30-Second Overview
+[Overview](#-overview) · [Screenshots](#-screenshots) · [Features](#-features) · [Architecture](#-architecture) · [Model Results](#-model-results) · [Data Transparency](#-data-transparency) · [Setup](#-local-setup) · [API](#-api-reference) · [Team](#-team)
 
-**Grid Pulse** is a full-stack smart load forecasting and autonomous grid protection system for commercial EV charging plazas. Ingesting multi-variable tabular telemetry (past load lags, corridor traffic inflow, grid frequency, and live ambient temperature), Grid Pulse predicts localized energy surges **2 hours in advance**, adjusts dynamic tariffs, and autonomously dispatches bay throttling and load shedding before transformer capacity (250 kW) is breached.
-
----
-
-## 🌐 Demo Credentials
-
-The system automatically initializes an SQLite database and seeds default accounts on first startup:
-
-| Role | Username | Password | Access Level & Permissions |
-| :--- | :--- | :--- | :--- |
-| **Station Operator** | `operator` | `operatorpassword123` | **Full Read/Write:** Run stress simulations, adjust throttling parameters, trigger automated load shedding, export audit reports |
-| **Station Viewer** | `viewer` | `viewerpassword123` | **Read-Only:** View live KPIs, load forecast curves, SHAP explainability waterfall, model benchmarks, and tariff matrices |
+</div>
 
 ---
 
-## 📸 Dashboard Preview
+## 🎯 Overview
 
-### 1. Control Center (Operational Overview & 24h Forecast)
-![](docs/screenshots/control-center.png)
+Commercial EV charging stations can draw enough power in a short window to overload their transformer. **Grid Pulse** is a full-stack system that forecasts station load **2 hours ahead**, explains *why* the model predicted it, and recommends (or simulates) protective actions such as dynamic tariffs, bay throttling, and load shedding.
 
-### 2. Live TreeSHAP Waterfall (Explainability & Feature Attribution)
-![](docs/screenshots/shap.png)
+| | |
+|---|---|
+| **Problem** | Sudden EV charging surges can breach the 250 kW transformer limit |
+| **Solution** | 2-hour-ahead forecasting, surge risk banding, explainable predictions, and demand-response tariffs |
+| **Models** | XGBoost (deployed) with TreeSHAP, PyTorch LSTM (benchmark) |
+| **Stack** | React + TypeScript + Tailwind, FastAPI, SQLite, JWT auth |
+| **Context** | Bhavan's College, CIA-2 project (BH.USCS.MAJ501) |
 
-### 3. Stress Testing Sandbox (What-If Grid Telemetry Simulation)
-![](docs/screenshots/sandbox.png)
-
-### 4. Batch Analysis (Historical CSV Ingestion & 2h Ahead Inference)
-![](docs/screenshots/batch.png)
-
-### 5. Vehicle Tariff Lab (Category-Calibrated Demand-Response Pricing)
-![](docs/screenshots/tariff-lab.png)
+**Surge risk bands (against 250 kW capacity):** 🟢 Normal below 65% · 🟡 Warning 65 to 80% · 🔴 Critical at 80% or above (200 kW)
 
 ---
 
-## 🚀 Key Features
+## 📸 Screenshots
 
-### 1. Real-Time Surge Prediction & Control Center (`/`)
-* **2-Hour Lookahead Forecasting:** Continuous prediction of station aggregate power demand ($\text{kW}$) compared against the 250 kW transformer physical limit.
-* **Radial Utilization KPIs:** Live visual capacity gauge with automated threshold banding: **Normal** (<65%), **Warning** (65–80%), and **Critical Surge** (≥80% / 200 kW).
-* **Autonomous Grid Safeguards:** Prescriptive operator guidance recommending power throttling ($60.0\text{ kW}$ stall caps) and non-critical bay shedding when overload is imminent.
+### Control Center: live forecast, capacity gauge, surge risk and tariff
+![Control Center](docs/screenshots/control-center.png)
 
-### 2. Transparent TreeSHAP Explainability (`/shap`)
-* **Local Feature Attribution:** Every prediction is decomposed in real-time into exact additive contributions across 15 temporal, grid, and weather features.
-* **Provable Mathematical Additivity:** Live card footer verifies TreeSHAP's efficiency property:
-  $$\text{Base Value } (E[f(x)]) + \sum_{i=1}^{15} \phi_i = \text{Final Model Prediction } (f(x))$$
-* **Dynamic Contributing Driver Identification:** Automatic detection and natural language synthesis of the top contributing drivers behind every prediction spike.
+### SHAP Explainability: why the model predicted this number
+![SHAP Explainability](docs/screenshots/shap.png)
 
-### 3. What-If Stress Simulation Sandbox (`/sandbox`)
-* **Operator Scenario Modeling:** Interactive control sliders for ambient temperature ($\Delta T$), traffic corridor surge (% increase), and forced stall outages ($0\text{--}8\text{ bays}$).
-* **Dynamic Bay Status Matrix:** Live 8-bay physical stall matrix visualizing real-time load distribution, automated throttling flags, and load-shedding states.
-* **Cross-Session Persistence:** Sliders and scenario multipliers persist across route navigation through a dedicated `TariffContext`.
+### Sandbox: what-if stress testing
+![Sandbox](docs/screenshots/sandbox.png)
 
-### 4. Batch Telemetry Ingestion (`/batch`)
-* **Drag-and-Drop CSV Processing:** High-throughput batch pipeline calculating 15 engineered features across multi-day telemetry logs.
-* **Surge Anomaly Tagging:** Immediate categorization of future high-risk timestamps exceeding the 200 kW safety ceiling.
-* **Audit CSV Export:** Downloadable annotated CSV reports with predicted loads, capacity utilization percentages, and surge trigger flags.
+### Batch Analysis: CSV upload and bulk 2-hour-ahead prediction
+![Batch Analysis](docs/screenshots/batch.png)
 
-### 5. Vehicle-Adjusted Tariff Lab (`/tariff-lab`)
-* **Vehicle Category Calibration:** Tiered demand-response dynamic pricing adjusted by vehicle power draw:
-  * **Tier 1 (Two-Wheeler EV):** $0.85\times$ base multiplier ($1.2\text{ kW}$ avg draw)
-  * **Tier 2 (Standard 4W EV):** $1.00\times$ base multiplier ($7.2\text{ kW}$ avg draw)
-  * **Tier 3 (DC Fast Charger):** $1.35\times$ base multiplier ($45.0\text{ kW}$ avg draw)
-* **Real-Time Synchronized Rates:** Real-time synchronization between Sandbox stress multipliers and individual vehicle charging tariffs.
-
-### 6. Role-Based Access Control (RBAC) & PDF Report Generation
-* **Enterprise Security:** JWT sessions (HS256) with `bcrypt` password hashing, token expiration, and permission-gated controls.
-* **Single-Click Audit PDF:** Comprehensive client-rendered PDF report export with 10 structured sections, live bay matrices, tariff tiers, and authenticated operator audit stamps.
+### Vehicle Tariff Lab: category-based demand-response pricing
+![Vehicle Tariff Lab](docs/screenshots/tariff-lab.png)
 
 ---
 
-## 🏗️ System Architecture
+## 🚀 Features
+
+### 1. Control Center
+- 24-hour load timeline with actual load and a 2-hour-ahead forecast
+- Capacity utilization gauge against the 250 kW transformer limit
+- Surge risk status with a dynamic tariff multiplier
+- Mitigation panel showing throttled bays, or a readiness preview when load is normal
+- Recent surge event log
+
+### 2. SHAP Explainability
+- TreeSHAP waterfall: base value to final prediction, one bar per feature
+- Additivity check in the UI: base value + sum of 15 SHAP values = model prediction
+- Auto-generated sentence naming the top contributing drivers
+- XGBoost vs LSTM comparison table (MAE, RMSE, surge recall, latency)
+
+### 3. Sandbox (what-if simulation)
+- Sliders for temperature change, traffic surge percentage, and forced stall outages (0 to 8 bays)
+- Backend simulation returns baseline vs simulated load and the mitigation dispatched
+- 8-bay status matrix: Active, Throttled, Shed, Idle
+- Control Center switches to a clearly marked "Simulation Active" view while a scenario is applied
+
+### 4. Batch Analysis
+- Upload a telemetry CSV and get vectorized predictions for every row
+- Summary stats, actual vs predicted chart (aligned to the 2-hour horizon), and a results table
+- Download the annotated results as CSV
+
+### 5. Vehicle Tariff Lab
+Demand-response pricing by vehicle category, linked to the current surge state:
+
+| Tier | Vehicle | Multiplier | Average draw |
+|---|---|---|---|
+| 1 | Two-wheeler EV | 0.85x | 1.2 kW |
+| 2 | Standard 4W EV | 1.00x | 7.2 kW |
+| 3 | DC fast charging | 1.35x | 45 kW |
+
+### 6. Security and reporting
+- JWT authentication (HS256) with bcrypt password hashing
+- Role-based access control: **Operator** (full access) and **Viewer** (read-only), enforced on the backend and not only hidden in the UI
+- One-click PDF report of the dashboard snapshot
+
+---
+
+## 🏗️ Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client["Frontend Client (React 19 + TypeScript + Vite)"]
-        UI["Tailwind CSS + Glassmorphism UI"]
-        Pages["5 Interactive Views: Control Center | SHAP | Sandbox | Batch | Tariff Lab"]
-        State["TariffContext + DataContext + AuthContext"]
-        PDF["Report Generator (html2canvas + jsPDF)"]
+    subgraph Client["Frontend: React + TypeScript + Vite"]
+        UI["Tailwind dark dashboard"]
+        Pages["Control Center, SHAP, Sandbox, Batch, Tariff Lab"]
+        State["Auth, Data and Tariff contexts"]
     end
 
-    subgraph Server["Backend API (FastAPI + Uvicorn)"]
-        Router["API v1 Endpoints & Auth Gate"]
-        Security["JWT RBAC + bcrypt CryptContext"]
-        Engine["ML Inference Engine (Singleton)"]
-        TariffSvc["Vehicle Tariff Engine"]
+    subgraph Server["Backend: FastAPI"]
+        Router["API v1 routes and auth gate"]
+        Security["JWT RBAC and bcrypt"]
+        Engine["ML inference engine"]
+        TariffSvc["Vehicle tariff service"]
     end
 
-    subgraph ML["Machine Learning Pipeline"]
-        XGB["XGBoost Regressor (Primary: 15 Features)"]
-        SHAP["TreeSHAP Explainer"]
-        LSTM["PyTorch 2-Layer LSTM (Benchmark)"]
+    subgraph ML["ML pipeline"]
+        XGB["XGBoost regressor, 15 features"]
+        SHAP["TreeSHAP explainer"]
+        LSTM["PyTorch LSTM benchmark"]
     end
 
-    subgraph DataSources["External Data & Storage"]
-        WeatherAPI["Open-Meteo REST API (Live Mumbai Temp)"]
-        SQLite[("SQLite Database (app.db - Users & Sessions)")]
-        SyntheticGen["synthesize_telemetry() (90-day multi-corridor data)"]
+    subgraph Data["Data and storage"]
+        Weather["Open-Meteo API, live Mumbai temperature"]
+        DB[("SQLite: users")]
+        Synth["synthesize_telemetry, 90 days"]
     end
 
-    UI --> State
-    State -->|Authenticated Requests (Bearer JWT)| Router
-    PDF -.->|Exports Canvas Snapshot| Client
-
+    UI --> Pages
+    Pages --> State
+    State -->|"Bearer JWT requests"| Router
     Router --> Security
-    Security --> SQLite
+    Security --> DB
     Router --> TariffSvc
     Router --> Engine
-    Router --> WeatherAPI
-
+    Router --> Weather
     Engine --> XGB
     Engine --> SHAP
-    Engine -.->|Benchmarking| LSTM
-    SyntheticGen -->|Precomputes Artifacts| XGB
+    Engine -.-> LSTM
+    Synth -->|"training data"| XGB
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 📊 Model Results
 
-| Domain | Technologies & Libraries | Purpose & Implementation Details |
-| :--- | :--- | :--- |
-| **Frontend** | React 19, TypeScript 5.7, Vite 8.2 | Component architecture, strict type contracts, hot-module reload |
-| **Styling & Icons** | Tailwind CSS 4, Lucide React, Google Material Icons | Responsive dark telemetry dashboard, custom design tokens, glassmorphism |
-| **Data Viz** | Recharts, html2canvas, jsPDF | Interactive time-series timelines, horizontal waterfall charts, PDF export |
-| **Backend** | Python 3.11+, FastAPI 0.141, Uvicorn | Asynchronous REST APIs, dependency injection, OpenAPI documentation |
-| **ML & Analytics** | XGBoost 3.4, SHAP 0.52, PyTorch 2.14, Scikit-Learn | Extreme Gradient Boosting regression, TreeSHAP explainer, LSTM sequence model |
-| **Data Science** | Pandas, NumPy, Joblib | 15-feature lag/rolling engineering, artifact serialization |
-| **Auth & Security** | Python-Jose, Passlib (`bcrypt`), OAuth2 Bearer | JWT token signing, salted password hashing, role-based route guards |
-| **Database** | SQLite, SQLAlchemy 2.0 | Lightweight ACID user persistence, automatic schema creation & demo seeding |
-| **Telemetry** | Open-Meteo Weather API | Live ambient temperature ingestion for Mumbai coordinates (`19.0760, 72.8777`) |
+Evaluated on the same held-out split (1,726 samples) from the 90-day feature pipeline.
 
----
+| Metric | XGBoost (deployed) | PyTorch LSTM (benchmark) |
+|---|---|---|
+| MAE | 8.81 kW | **7.23 kW** |
+| RMSE | 11.11 kW | **9.06 kW** |
+| Surge recall | 91.5% | **100%** |
+| Inference latency | 0.3 ms / sample | 0.2 ms / sample |
+| Explainability | **Exact TreeSHAP** | Black box |
 
-## 📊 Machine Learning Model Benchmarks
-
-Evaluation results measured directly on an identical test split ($N = 1,726$ holdout samples) from the 90-day feature pipeline (`backend/saved_models/`):
-
-| Metric | XGBoost Regressor (Deployed Primary) | PyTorch LSTM Sequence (Benchmark) | Operational Advantage / Analysis |
-| :--- | :--- | :--- | :--- |
-| **MAE ($\text{kW}$)** | **8.81 kW** | **7.23 kW** | Both models achieve sub-10 kW error on a 250 kW transformer |
-| **RMSE ($\text{kW}$)** | **11.11 kW** | **9.06 kW** | Low variance under volatile charging events |
-| **Surge Recall (%)** | **91.5%** | **100.0%** | Captures dangerous spikes over the 200 kW (80%) safety ceiling |
-| **Inference Latency** | **0.3 ms / sample** | **0.2 ms / sample** | Ultra-low sub-millisecond execution for real-time edge microgrids |
-| **Interpretability** | **Full (TreeSHAP exact additivity)** | Black-Box (Neural attention required) | **XGBoost selected as deployed model for regulatory explainability** |
-
-> **Model Selection Rationale:** While PyTorch LSTM leads raw metrics on the synthetic split, **XGBoost is deployed as the active production model** to provide exact mathematical TreeSHAP attributions required for energy utility audits. Promotion of the LSTM model is deferred pending multi-split temporal validation.
+> **Why XGBoost is deployed:** the LSTM scores slightly better on raw metrics, but XGBoost gives exact TreeSHAP attributions, which matter for auditable grid decisions. Promoting the LSTM is deferred until multi-split temporal validation is done.
 
 ---
 
-## 🔍 Data Transparency & Engineering
+## 🔍 Data Transparency
 
-* **Live Weather Telemetry:** Real-time ambient temperature is fetched from the **Open-Meteo API** for Mumbai (`19.0760° N, 72.8777° E`) with a 10-minute in-memory cache and a operating range of 20°C to 40°C.
-* **Synthetic Load & Traffic Corridor Data:** Because commercial EV charging network telemetry in India is proprietary, 90 days ($8,640$ timestamps at 15-minute intervals) of charging load ($25.5\text{--}274.0\text{ kW}$), traffic inflow indices ($0\text{--}100$), grid frequency ($59.8\text{--}60.2\text{ Hz}$), and active plug occupancy are synthetically modeled via `synthesize_telemetry()` using real-world diurnal commuting distributions.
-* **15 Engineered Features:**
-  * **Environmental:** `ambient_temp_c`
-  * **Corridor Traffic & Plugs:** `traffic_inflow_index`, `active_plugs`, `plug_delta_15m`
-  * **Grid Electricals:** `grid_frequency_hz`
-  * **Historical Load Lags:** `load_lag_15m`, `load_lag_30m`, `load_lag_45m`, `load_lag_60m`
-  * **Rolling Windows:** `rolling_mean_60m`, `rolling_std_60m`
-  * **Cyclical Trigonometric Time:** `hour_sin`, `hour_cos`, `day_sin`, `day_cos`
+| Signal | Source |
+|---|---|
+| Ambient temperature | **Live and real**, from the Open-Meteo API for Mumbai (19.0760 N, 72.8777 E), cached 10 minutes |
+| Charging load, traffic index, grid frequency, active plugs | **Synthetic**, generated by `synthesize_telemetry()` |
+
+Detailed public EV charging data for India is not available, so 90 days of 15-minute telemetry (8,640 timestamps) were synthesized with realistic daily commuting patterns and temperature dependence. The dashboard's "live" feed is a continuously updating simulation of this kind; only temperature comes from a real external source.
+
+**15 engineered features:** ambient temperature, traffic inflow index, active plugs, plug delta (15 min), grid frequency, load lags (15, 30, 45, 60 min), rolling mean and std (60 min), and cyclical time encodings (hour and day, sin and cos).
 
 ---
 
-## 💻 Local Setup & Installation
+## 💻 Local Setup
 
-### Prerequisites
-* **Python 3.11+**
-* **Node.js 18+ & npm**
+**Prerequisites:** Python 3.11+, Node.js 18+
 
-### 1. Clone Repository & Setup Environment
+### 1. Clone
 ```bash
 git clone https://github.com/soham-88/ev-surge-predictor.git
 cd ev-surge-predictor
 ```
 
-### 2. Backend Setup
+### 2. Backend
 ```bash
 cd backend
-
-# Create and activate virtual environment
 python -m venv venv
 
-# Windows:
+# Windows (PowerShell)
 .\venv\Scripts\activate
-# macOS/Linux:
+# macOS / Linux
 # source venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
 
-# (Optional) Re-train models or verify pipeline
+# Environment variables (Windows: copy .env.example .env)
+cp .env.example .env
+
+# Optional: retrain the models
 python pipeline/train.py
 
-# Setup environment variables
-cp .env.example .env
-
-# Start FastAPI server on port 8000
 python -m uvicorn app.main:app --port 8000 --reload
 ```
-The API Swagger documentation will be available at: **http://127.0.0.1:8000/docs**
+API docs: http://127.0.0.1:8000/docs
 
-### 3. Frontend Setup
-In a new terminal window:
+### 3. Frontend (new terminal)
 ```bash
 cd frontend
-
-# Install node dependencies
 npm install
-
-# Setup environment variables
-cp .env.example .env
-
-# Start Vite dev server on port 5173
+cp .env.example .env     # Windows: copy .env.example .env
 npm run dev
 ```
-Open **http://localhost:5173** in your browser and sign in with the Operator or Viewer credentials.
+Open http://localhost:5173
+
+### Demo accounts
+Seeded automatically on first backend startup:
+
+| Role | Username | Password | Access |
+|---|---|---|---|
+| Operator | `operator` | `operatorpassword123` | Full access, including Sandbox simulation |
+| Viewer | `viewer` | `viewerpassword123` | Read-only |
+
+These are demo credentials for local use only.
 
 ---
 
-## 📡 API Overview
+## 📡 API Reference
 
-| Method | Endpoint | Access Level | Description | Key Request / Response Parameters |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/health` | Public | System health check & service verification | `{ "status": "ok", "service": "ev-surge-predictor" }` |
-| `POST` | `/api/v1/auth/login` | Public | Authenticate user credentials and issue JWT | `username`, `password` $\rightarrow$ `{ "access_token", "role" }` |
-| `GET` | `/api/v1/auth/me` | Authenticated | Fetch authenticated user profile & role | Requires Bearer token $\rightarrow$ `{ "username", "role" }` |
-| `POST` | `/api/v1/predict` | Authenticated | 2-hour ahead power load forecasting | Telemetry vector $\rightarrow$ `predicted_load_kw`, `surge_risk` |
-| `POST` | `/api/v1/explain` | Authenticated | Real-time TreeSHAP feature attributions | Telemetry vector $\rightarrow$ `attributions`, `base_value_kw` |
-| `POST` | `/api/v1/simulate` | **Operator Only** | Grid stress what-if simulation | `temp_delta_c`, `traffic_surge_pct`, `outage_stalls` |
-| `GET` | `/api/v1/metrics` | Authenticated | Model evaluation benchmark results | `{ "models": [XGBoost metrics, LSTM metrics] }` |
-| `POST` | `/api/v1/predict/batch`| Authenticated | Batch CSV telemetry upload & prediction | Multipart CSV $\rightarrow$ Table of predictions & flags |
-| `GET` | `/api/v1/predict/batch/download/{batch_id}` | Authenticated | Download annotated batch results CSV | `batch_id` $\rightarrow$ Downloadable CSV file |
-| `GET` | `/api/v1/tariff/vehicle-options` | Authenticated | Fetch supported EV categories & specs | Returns 2W, Standard 4W, Fast-Charging definitions |
-| `POST` | `/api/v1/tariff/vehicle-adjusted` | Authenticated | Calculate demand-response tariff rate | `base_surge_multiplier`, `vehicle_type` $\rightarrow$ rate |
-| `GET` | `/api/v1/weather/current` | Authenticated | Fetch live ambient temperature | Open-Meteo cache $\rightarrow$ `{ "temp_c", "source" }` |
+<details>
+<summary><b>Click to expand all endpoints</b></summary>
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/health` | Public | Health check |
+| POST | `/api/v1/auth/login` | Public | Login, returns JWT and role |
+| GET | `/api/v1/auth/me` | Authenticated | Current user and role |
+| POST | `/api/v1/predict` | Authenticated | 2-hour-ahead load prediction and surge risk |
+| POST | `/api/v1/explain` | Authenticated | TreeSHAP feature attributions |
+| POST | `/api/v1/simulate` | Operator | What-if grid stress simulation |
+| GET | `/api/v1/metrics` | Authenticated | XGBoost and LSTM evaluation metrics |
+| POST | `/api/v1/predict/batch` | Authenticated | Batch CSV prediction |
+| GET | `/api/v1/predict/batch/download/{batch_id}` | Authenticated | Download annotated results CSV |
+| GET | `/api/v1/tariff/vehicle-options` | Authenticated | Vehicle categories and specs |
+| POST | `/api/v1/tariff/vehicle-adjusted` | Authenticated | Vehicle-adjusted tariff rate |
+| GET | `/api/v1/weather/current` | Authenticated | Live temperature from Open-Meteo |
+
+</details>
 
 ---
 
-## 📂 Repository Structure
+## 📂 Project Structure
 
 ```text
 ev-surge-predictor/
-├── LICENSE                                # MIT Open Source License
-├── README.md                              # Project documentation
-├── requirements.txt                       # Root python dependencies
-│
 ├── backend/
-│   ├── .env.example                       # Backend environment variable template
-│   ├── requirements.txt                   # Trimmed, pinned backend dependencies
 │   ├── app/
-│   │   ├── main.py                        # FastAPI entry point, CORS, startup seeding
-│   │   ├── api/v1/                        # API routes (predict, explain, simulate, auth, batch)
-│   │   ├── core/                          # Config, SQLite connection, JWT security, weather service
-│   │   ├── models/                        # ML inference engine, User model, optimizer logic
-│   │   ├── routers/tariff.py              # Dynamic vehicle-adjusted tariff router
-│   │   ├── schemas/telemetry.py           # Pydantic request/response validation schemas
-│   │   └── services/vehicle_tariff.py     # Vehicle power tiers & demand-response logic
-│   ├── pipeline/
-│   │   ├── train.py                       # Telemetry synthesizer, feature engineering, XGBoost training
-│   │   ├── train_lstm.py                  # PyTorch LSTM 2-layer sequence benchmark trainer
-│   │   └── benchmark_models.py            # Comparative evaluation & validation utilities
-│   └── saved_models/                      # Tracked ML artifacts (<5 MB: weights, scalers, metrics)
-│
+│   │   ├── main.py            # FastAPI entry, CORS, startup seeding
+│   │   ├── api/v1/            # predict, explain, simulate, auth, batch routes
+│   │   ├── core/              # config, database, JWT security, weather service
+│   │   ├── models/            # ML inference engine, user model
+│   │   ├── routers/           # tariff router
+│   │   ├── schemas/           # Pydantic schemas
+│   │   └── services/          # vehicle tariff logic
+│   ├── pipeline/              # train.py, train_lstm.py, benchmark_models.py
+│   └── saved_models/          # trained artifacts and metrics
 ├── frontend/
-│   ├── .env.example                       # Frontend environment variable template
-│   ├── package.json                       # Vite, React 19, Tailwind, Recharts dependencies
-│   ├── vite.config.ts                     # Vite build configuration
 │   └── src/
-│       ├── App.tsx                        # React Router layout & authentication guards
-│       ├── components/Dashboard/          # ForecastTimeline, ShapWaterfall, StressSandbox, StallGrid, ReportTemplate
-│       ├── context/                       # AuthContext, DataContext, TariffContext
-│       ├── pages/                         # ControlCenter, ShapPage, SandboxPage, BatchAnalysis, VehicleTariffLab
-│       ├── services/api.ts                # API client with JWT interceptor coverage
-│       └── types/telemetry.ts             # TypeScript domain models & interfaces
-│
-└── docs/
-    ├── screenshots/                       # High-resolution dashboard page previews
-    ├── AUDIT_REPORT.md                    # Deep-dive system audit & security verification
-    └── Ev charging surge predictor spec.md# Mathematical specifications & feature pipeline docs
+│       ├── components/        # ForecastTimeline, ShapWaterfall, StressSandbox, StallGrid
+│       ├── context/           # Auth, Data, Tariff contexts
+│       ├── pages/             # ControlCenter, ShapPage, SandboxPage, BatchAnalysis, VehicleTariffLab
+│       ├── services/api.ts    # API client with JWT handling
+│       └── types/             # TypeScript models
+└── docs/                      # screenshots, audit report, specification
 ```
 
 ---
 
-## 🗺️ Roadmap & Future Enhancements
+## 🗺️ Roadmap
 
-- [ ] **Hardware In-the-Loop (HIL) Integration:** Connect OCPP 2.0.1 (Open Charge Point Protocol) handlers for direct physical charger throttles.
-- [ ] **Real-Time WebSockets:** Replace 5-second polling intervals with persistent WebSocket connections for sub-second telemetry streaming.
-- [ ] **Temporal Cross-Validation Benchmark:** Run rolling walk-forward cross-validation on the PyTorch LSTM sequence model before production promotion.
-- [ ] **Prometheus & Grafana Exporters:** Export real-time prediction accuracy, drift metrics, and API latency metrics to standard observability stacks.
+- [ ] Real-time WebSocket telemetry instead of polling
+- [ ] Walk-forward temporal cross-validation for the LSTM
+- [ ] OCPP 2.0.1 integration for real charger throttling
+- [ ] Docker Compose for one-command setup
+- [ ] Automated tests (pytest, Vitest) and a CI workflow
+- [ ] Cloud deployment with a public demo link
 
 ---
 
-## 👥 Team & Academic Context
+## 👥 Team
 
-* **Soham Pawar** (Project Lead) — [@soham-88](https://github.com/soham-88)
-* **Suryaprakash Pati**
-* **Gaurav Kanojiya**
-* **Madhur Kushwaha**
-* **Georgina Varghese**
+Built as a team project at **Bhavan's College, Mumbai** (CIA-2, Course Code BH.USCS.MAJ501).
 
-Developed for Bhavan's College, Continuous Internal Assessment 2 (CIA-2), Course Code BH.USCS.MAJ501
+| Name |
+|---|
+| **Soham Pawar** ([@soham-88](https://github.com/soham-88)) |
+| Suryaprakash Pati |
+| Gaurav Kanojiya |
+| Madhur Kushwaha |
+| Georgina Varghese |
+
+---
+
+<div align="center">
+
+Released under the [MIT License](LICENSE).
+
+</div>
