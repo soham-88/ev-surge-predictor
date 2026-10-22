@@ -17,9 +17,7 @@
 
 ---
 
-## 🌐 Live Demo & Demo Credentials
-
-🔗 **Live Deployment:** [[LIVE_DEMO_URL]](https://github.com/souls-29/ev-surge-predictor) *(Configure via `VITE_API_URL`)*
+## 🌐 Demo Credentials
 
 The system automatically initializes an SQLite database and seeds default accounts on first startup:
 
@@ -63,7 +61,7 @@ The system automatically initializes an SQLite database and seeds default accoun
 * **Dynamic Contributing Driver Identification:** Automatic detection and natural language synthesis of the top contributing drivers behind every prediction spike.
 
 ### 3. What-If Stress Simulation Sandbox (`/sandbox`)
-* **Operator Scenario Modeling:** Interactive control sliders for ambient temperature ($\Delta T$), traffic corridor surge ($\% \text{ increase}$), and forced stall outages ($0\text{--}8\text{ bays}$).
+* **Operator Scenario Modeling:** Interactive control sliders for ambient temperature ($\Delta T$), traffic corridor surge (% increase), and forced stall outages ($0\text{--}8\text{ bays}$).
 * **Dynamic Bay Status Matrix:** Live 8-bay physical stall matrix visualizing real-time load distribution, automated throttling flags, and load-shedding states.
 * **Cross-Session Persistence:** Sliders and scenario multipliers persist across route navigation through a dedicated `TariffContext`.
 
@@ -157,7 +155,7 @@ Evaluation results measured directly on an identical test split ($N = 1,726$ hol
 | :--- | :--- | :--- | :--- |
 | **MAE ($\text{kW}$)** | **8.81 kW** | **7.23 kW** | Both models achieve sub-10 kW error on a 250 kW transformer |
 | **RMSE ($\text{kW}$)** | **11.11 kW** | **9.06 kW** | Low variance under volatile charging events |
-| **Surge Recall ($\%$)** | **91.5%** | **100.0%** | Captures dangerous spikes over the 200 kW (80%) safety ceiling |
+| **Surge Recall (%)** | **91.5%** | **100.0%** | Captures dangerous spikes over the 200 kW (80%) safety ceiling |
 | **Inference Latency** | **0.3 ms / sample** | **0.2 ms / sample** | Ultra-low sub-millisecond execution for real-time edge microgrids |
 | **Interpretability** | **Full (TreeSHAP exact additivity)** | Black-Box (Neural attention required) | **XGBoost selected as deployed model for regulatory explainability** |
 
@@ -187,7 +185,7 @@ Evaluation results measured directly on an identical test split ($N = 1,726$ hol
 
 ### 1. Clone Repository & Setup Environment
 ```bash
-git clone https://github.com/souls-29/ev-surge-predictor.git
+git clone https://github.com/soham-88/ev-surge-predictor.git
 cd ev-surge-predictor
 ```
 
@@ -310,11 +308,10 @@ ev-surge-predictor/
 
 ## 👥 Team & Academic Context
 
-* **Project Lead & Full-Stack / ML Architecture:** **Soham Pawar** ([@souls-29](https://github.com/souls-29))
-* **Teammate Contributions:**
-  * **Collaborator 1:** Frontend UI/UX, Component Architecture & Glassmorphism System
-  * **Collaborator 2:** Telemetry Synthesis, XGBoost Pipeline & TreeSHAP Integration
-  * **Collaborator 3:** Database Architecture, SQLite Persistence & JWT RBAC Security
-  * **Collaborator 4:** Benchmarking, Evaluation Metrics & Documentation
+* **Soham Pawar** (Project Lead) — [@soham-88](https://github.com/soham-88)
+* **Suryaprakash Pati**
+* **Gaurav Kanojiya**
+* **Madhur Kushwaha**
+* **Georgina Varghese**
 
-**Academic Coursework:** Developed for **Bhavan's College — Continuous Internal Assessment 2 (CIA-2)** in Data Science & Machine Learning Applications.
+Developed for Bhavan's College, Continuous Internal Assessment 2 (CIA-2), Course Code BH.USCS.MAJ501
