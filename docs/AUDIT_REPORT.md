@@ -1,6 +1,6 @@
 # ML Pipeline & System Audit Report
 
-**Date:** 2026-09-10 (Updated post-remediation)  
+**Date:** 2026-10-26 (Updated post-metrics standardization)  
 **Scope:** Comprehensive assessment of the EV Surge Predictor (Model, Backend, Frontend, Security, and Vehicle-Adjusted Tariff features).
 
 ---
@@ -28,7 +28,7 @@ All three critical issues flagged in the initial audit have been **completely re
 | :--- | :--- | :--- | :--- |
 | Training Pipeline Execution | Model | **REAL/WORKING** | None |
 | XGBoost UI Metrics | Model | **REAL/WORKING** | None |
-| LSTM Benchmark Implementation | Model | **PLACEHOLDER** | None (Acceptable demo comparison) |
+| LSTM Benchmark Implementation | Model | **REAL/WORKING (Resolved)** | Fully implemented in train_lstm.py |
 | Training Data Authenticity | Model | **PLACEHOLDER** | None (Synthetic data generator) |
 | Core API Endpoints (`/predict`, `/simulate`, `/explain`) | Backend | **REAL/WORKING** | None |
 | Batch Upload Schema & Parity | Backend | **REAL/WORKING (Resolved)** | None (`load_lag_45m` added) |
@@ -61,14 +61,14 @@ All three critical issues flagged in the initial audit have been **completely re
 * **Details:** The training pipeline outputs entirely real artifacts. Running `train.py` actively generates new versions of `xgboost_model.joblib`, `scaler.joblib`, `shap_explainer.joblib`, `feature_names.joblib`, and `training_metrics.joblib` inside the `backend/saved_models/` directory.
 
 **3. Source of UI Metrics**
-* **Verdict:** **MIXED (Partially REAL, Partially PLACEHOLDER)**
+* **Verdict:** **REAL/WORKING (Updated: October 26, 2026)**
 * **Details:** 
-  * **XGBoost Metrics (REAL):** The MAE, RMSE, and Surge Recall for the primary XGBoost model are dynamically pulled from the model's actual test-set evaluation during training (`training_metrics.joblib`).
-  * **LSTM Metrics & Latency (PLACEHOLDER):** The LSTM benchmark metrics (7.85 MAE, 11.20 RMSE, 93.1% Recall, 28.5ms Latency) and the XGBoost latency metric (4.2ms) are PLACEHOLDERS — not computed from a real evaluation. They are hardcoded strings located at `backend/app/api/v1/endpoints/metrics.py`.
+  * **XGBoost Metrics (REAL):** The MAE (8.81 kW), RMSE (11.11 kW), and Surge Recall (91.5%) for the primary XGBoost model are dynamically pulled from the model's actual test-set evaluation during training (`training_metrics.joblib`).
+  * **LSTM Metrics & Standardized Latency (REAL):** Both the XGBoost and PyTorch LSTM models are evaluated on the held-out test split using a standardized single-sample latency protocol (N=1, 10 warm-up passes, 100 timed iterations, median reported: 0.48 ms for XGBoost, 0.59 ms for LSTM). Evaluation metrics are dynamically loaded from `training_metrics.joblib` and `lstm_metrics.joblib` by `GET /api/v1/metrics`.
 
 **4. LSTM Benchmark Implementation**
-* **Verdict:** **PLACEHOLDER**
-* **Details:** The PyTorch LSTM Sequence model does not exist anywhere in the codebase. There is no code to train, instantiate, or evaluate it. It exists strictly as a set of hardcoded comparison numbers for UI benchmarking.
+* **Verdict:** **REAL/WORKING (Updated: October 26, 2026)**
+* **Details:** The PyTorch LSTM Sequence model is fully implemented in `backend/pipeline/train_lstm.py` (a 2-layer LSTM with 64 hidden units). Running `train_lstm.py` trains the sequence model on the identical 90-day feature pipeline, evaluates test metrics (7.23 kW MAE, 9.06 kW RMSE, 100.0% Surge Recall), and exports `lstm_model.pt` and `lstm_metrics.joblib` into `backend/saved_models/`.
 
 **5. Training Data Authenticity**
 * **Verdict:** **PLACEHOLDER**

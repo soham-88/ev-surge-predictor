@@ -149,7 +149,7 @@ Evaluated on the same held-out split (1,726 samples) from the 90-day feature pip
 | MAE | 8.81 kW | **7.23 kW** |
 | RMSE | 11.11 kW | **9.06 kW** |
 | Surge recall | 91.5% | **100%** |
-| Inference latency | 0.3 ms / sample | 0.2 ms / sample |
+| Inference latency | 0.48 ms / sample | 0.59 ms / sample |
 | Explainability | **Exact TreeSHAP** | Black box |
 
 > **Why XGBoost is deployed:** the LSTM scores slightly better on raw metrics, but XGBoost gives exact TreeSHAP attributions, which matter for auditable grid decisions. Promoting the LSTM is deferred until multi-split temporal validation is done.
