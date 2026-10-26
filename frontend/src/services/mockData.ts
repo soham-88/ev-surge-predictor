@@ -11,7 +11,7 @@ export const mockPredictResponse: PredictResponse = {
     per_stall_cap_kw: 60.0,
     shed_stalls: [4, 7],
   },
-  inference_latency_ms: 4.1,
+  inference_latency_ms: 0.48,
 };
 
 export const mockExplainResponse: ExplainResponse = {

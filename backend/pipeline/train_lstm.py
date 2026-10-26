@@ -18,7 +18,7 @@ Artifacts saved to  backend/saved_models/:
 
 from __future__ import annotations
 
-import time
+import sys
 from pathlib import Path
 
 import joblib
@@ -30,6 +30,10 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 # Reuse the exact same data pipeline as XGBoost
 from train import (
     synthesize_telemetry,
@@ -38,6 +42,7 @@ from train import (
     TARGET_COLUMN,
     SAVED_MODELS_DIR,
 )
+from latency_utils import measure_inference_latency
 
 # ──────────────────────────────────────────────────────────────
 #  1.  LSTM Model Definition
@@ -174,21 +179,10 @@ def train_lstm(
     all_preds = []
     all_targets = []
 
-    # Measure inference latency
-    latency_samples = 0
-    total_inference_time = 0.0
-
     with torch.no_grad():
         for X_batch, y_batch in test_loader:
             X_batch = X_batch.to(device)
-
-            t0 = time.perf_counter()
             preds = model(X_batch)
-            t1 = time.perf_counter()
-
-            total_inference_time += (t1 - t0)
-            latency_samples += X_batch.size(0)
-
             all_preds.append(preds.cpu().numpy())
             all_targets.append(y_batch.numpy())
 
@@ -198,8 +192,10 @@ def train_lstm(
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
 
-    # Average per-sample latency in ms
-    avg_latency_ms = (total_inference_time / latency_samples) * 1000
+    # Measure inference latency using standardized protocol (single sample, 10 warmup, 100 timed iterations, median)
+    sample_lstm = torch.FloatTensor(X_test_seq[:1]).to(device)
+    with torch.no_grad():
+        avg_latency_ms = measure_inference_latency(lambda s: model(s), sample_lstm, n_warmup=10, n_iterations=100)
 
     # Surge recall: detect events where load > 80% of 250 kW capacity (Safety Margin)
     TRANSFORMER_CAPACITY = 250.0
@@ -215,7 +211,7 @@ def train_lstm(
         "mae_kw": round(float(mae), 2),
         "rmse_kw": round(float(rmse), 2),
         "surge_recall_pct": round(float(surge_recall * 100), 1),
-        "latency_ms": round(float(avg_latency_ms), 1),
+        "latency_ms": avg_latency_ms,
         "n_test_sequences": len(y_true),
         "seq_len": seq_len,
     }
@@ -226,7 +222,7 @@ def train_lstm(
     print(f"  MAE           : {metrics['mae_kw']:.2f} kW")
     print(f"  RMSE          : {metrics['rmse_kw']:.2f} kW")
     print(f"  Surge Recall  : {metrics['surge_recall_pct']:.1f}%")
-    print(f"  Avg Latency   : {metrics['latency_ms']:.1f} ms/sample")
+    print(f"  Avg Latency   : {metrics['latency_ms']:.2f} ms/sample")
     print(f"  Test sequences: {metrics['n_test_sequences']}")
     print("=" * 55)
 

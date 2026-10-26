@@ -21,7 +21,7 @@ export function useMockTelemetry(isPaused: boolean = false) {
     headerKpis: {
       gridFrequencyHz: 59.92,
       ambientTempC: 36.5,
-      latencyMs: 4.1,
+      latencyMs: 0.48,
     },
     recentEvents: [],
     bayStates: {
@@ -50,7 +50,7 @@ export function useMockTelemetry(isPaused: boolean = false) {
         const newTemp = Math.max(28, Math.min(40, prev.headerKpis.ambientTempC + tempDelta));
 
         // Latency jitter
-        const newLatency = Math.max(2, prev.headerKpis.latencyMs + (Math.random() - 0.5) * 1.5);
+        const newLatency = Math.max(0.2, prev.headerKpis.latencyMs + (Math.random() - 0.5) * 0.1);
 
         // 24h timeline update
         const newTimeline = [...prev.simulateData.timeline];

@@ -2,6 +2,8 @@ EV Charging Station Smart Load & Surge Predictor
 
 Intelligent Grid Operations, Predictive Load Forecasting & Autonomous Throttling Platform
 
+> **Note:** Metrics shown are from the final trained models; the initial design targets were different.
+
 1. Executive Summary & Product Specification (PRD)
 1.1 Problem Statement
 
@@ -178,10 +180,10 @@ $$\text{Day}_{\sin} = \sin\left(\frac{2\pi \cdot \text{day}}{7}\right), \quad \t
 | :--- | :--- | :--- |
 | **Model Architecture** | Gradient Boosted Decision Trees | 2-Layer LSTM (64 hidden units) + Dense |
 | **Target Function** | Regressor (RMSE Loss) | Sequential MSE Loss |
-| **Inference Latency** | ~4.2 ms | ~28.5 ms |
-| **Mean Absolute Error (MAE)** | 6.42 kW | 7.85 kW |
-| **Root Mean Squared Error (RMSE)** | 9.15 kW | 11.20 kW |
-| **Surge Recall (> 85% Capacity)** | 97.8% | 93.1% |
+| **Inference Latency** | ~0.48 ms | ~0.59 ms |
+| **Mean Absolute Error (MAE)** | 8.81 kW | 7.23 kW |
+| **Root Mean Squared Error (RMSE)** | 11.11 kW | 9.06 kW |
+| **Surge Recall (> 85% Capacity)** | 91.5% | 100.0% |
 | **Explainability Engine** | Exact Shapley Values (TreeSHAP) | Integrated Gradients |
 4. REST API & Data Contracts Specification
 4.1 POST /api/v1/predict
@@ -214,7 +216,7 @@ json
     "per_stall_cap_kw": 60.0,
     "shed_stalls": [4, 7]
   },
-  "inference_latency_ms": 4.1
+  "inference_latency_ms": 0.48
 }
 4.2 POST /api/v1/explain
 
@@ -276,17 +278,17 @@ json
   "models": [
     {
       "name": "XGBoost Regressor (Primary)",
-      "mae_kw": 6.42,
-      "rmse_kw": 9.15,
-      "surge_recall_pct": 97.8,
-      "latency_ms": 4.2
+      "mae_kw": 8.81,
+      "rmse_kw": 11.11,
+      "surge_recall_pct": 91.5,
+      "latency_ms": 0.48
     },
     {
       "name": "PyTorch LSTM Sequence (Benchmark)",
-      "mae_kw": 7.85,
-      "rmse_kw": 11.20,
-      "surge_recall_pct": 93.1,
-      "latency_ms": 28.5
+      "mae_kw": 7.23,
+      "rmse_kw": 9.06,
+      "surge_recall_pct": 100.0,
+      "latency_ms": 0.59
     }
   ]
 }

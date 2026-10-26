@@ -34,12 +34,16 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # ──────────────────────────────────────────────────────────────
-# 0.  Paths
+# 0.  Paths & Utilities
 # ──────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = SCRIPT_DIR.parent
 SAVED_MODELS_DIR = BACKEND_DIR / "saved_models"
 SAVED_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from latency_utils import measure_inference_latency
 
 
 # ──────────────────────────────────────────────────────────────
@@ -257,17 +261,9 @@ def train_model(
     mae = mean_absolute_error(y_test, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
-    # Inference latency benchmark (average over 100 single-sample predictions)
-    import time
+    # Inference latency benchmark (standardized protocol: N=1, 10 warmup, 100 timed iterations, median)
     _sample = X_test_scaled[:1]
-    for _ in range(10):  # warmup
-        model.predict(_sample)
-    latency_times = []
-    for _ in range(100):
-        t0 = time.perf_counter()
-        model.predict(_sample)
-        latency_times.append((time.perf_counter() - t0) * 1000)
-    avg_latency_ms = round(float(np.mean(latency_times)), 1)
+    avg_latency_ms = measure_inference_latency(model.predict, _sample, n_warmup=10, n_iterations=100)
 
     # Surge recall: detect events where load > 80% of 250 kW capacity (Safety Margin)
     TRANSFORMER_CAPACITY = 250.0
@@ -295,7 +291,7 @@ def train_model(
     print(f"  MAE           : {metrics['mae_kw']:.2f} kW   (target < 8.5)")
     print(f"  RMSE          : {metrics['rmse_kw']:.2f} kW")
     print(f"  Surge Recall  : {metrics['surge_recall_pct']:.1f}%  (target = 100%)")
-    print(f"  Avg Latency   : {metrics['latency_ms']:.1f} ms/sample")
+    print(f"  Avg Latency   : {metrics['latency_ms']:.2f} ms/sample")
     print(f"  Train samples : {metrics['n_train']}")
     print(f"  Test samples  : {metrics['n_test']}")
     print("=" * 55)
