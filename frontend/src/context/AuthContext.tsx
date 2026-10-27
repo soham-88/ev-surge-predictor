@@ -29,9 +29,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const data = await api.getMe();
           setUser({ name: data.username, role: data.role === 'operator' ? 'Operator' : 'Viewer' });
-        } catch (e) {
-          localStorage.removeItem('token');
-          setUser(null);
+        } catch (e: any) {
+          if (e?.status === 401) {
+            localStorage.removeItem('token');
+            setUser(null);
+          } else {
+            // Backend offline / network failure: decode token payload to preserve session so dashboard ErrorState can render
+            try {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              const role = (payload.role || '').toLowerCase() === 'operator' ? 'Operator' : 'Viewer';
+              setUser({ name: payload.sub || 'operator', role });
+            } catch {
+              localStorage.removeItem('token');
+              setUser(null);
+            }
+          }
         }
       }
       setIsLoading(false);

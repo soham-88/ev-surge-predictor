@@ -6,14 +6,115 @@ import { useRef, useState } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import { ReportTemplate } from '../components/Dashboard/ReportTemplate';
+import { Skeleton, SkeletonText, ErrorState } from '../components/ui';
+
+function ControlCenterSkeleton() {
+  return (
+    <>
+      {/* Page Header Skeleton */}
+      <div className="mb-6 flex items-center justify-between">
+        <SkeletonText className="w-56 h-9" />
+        <Skeleton className="w-40 h-10 rounded-lg" />
+      </div>
+
+      {/* Grid Container Skeletons matching ForecastTimeline layout */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-gap-grid auto-rows-min">
+        {/* 8-col Hero Chart Skeleton */}
+        <div className="md:col-span-8 rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col min-h-100 justify-between">
+          <div className="flex justify-between items-start mb-6">
+            <div className="flex flex-col gap-2">
+              <SkeletonText className="w-48 h-6" />
+              <SkeletonText className="w-32 h-4" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="w-16 h-8 rounded-lg" />
+              <Skeleton className="w-16 h-8 rounded-lg" />
+            </div>
+          </div>
+          {/* Shimmer Chart Canvas placeholder */}
+          <Skeleton className="w-full h-64 rounded-xl my-4" />
+          <div className="flex justify-between items-center pt-4 border-t border-border-subtle/40">
+            <SkeletonText className="w-40 h-4" />
+            <SkeletonText className="w-24 h-4" />
+          </div>
+        </div>
+
+        {/* 4-col Side Cards (Transformer Gauge, Surge Risk, Mitigation) */}
+        <div className="md:col-span-4 flex flex-col gap-gap-grid">
+          {/* Tile 1: Gauge */}
+          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col items-center justify-center min-h-[220px]">
+            <div className="flex justify-between w-full mb-4">
+              <SkeletonText className="w-36 h-5" />
+              <Skeleton className="w-14 h-5 rounded-full" />
+            </div>
+            <Skeleton className="w-32 h-32 rounded-full my-2" />
+            <SkeletonText className="w-28 h-4 mt-2" />
+          </div>
+
+          {/* Tile 2: Surge Risk */}
+          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col justify-between min-h-[200px]">
+            <div className="flex justify-between items-start">
+              <SkeletonText className="w-36 h-5" />
+              <Skeleton className="w-20 h-6 rounded-full" />
+            </div>
+            <div className="my-4">
+              <SkeletonText className="w-24 h-3 mb-2" />
+              <Skeleton className="w-32 h-10 rounded" />
+            </div>
+            <SkeletonText className="w-48 h-4" />
+          </div>
+
+          {/* Tile 3: Mitigations */}
+          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col justify-between min-h-[200px]">
+            <div className="flex justify-between items-start">
+              <SkeletonText className="w-40 h-5" />
+              <Skeleton className="w-16 h-6 rounded-full" />
+            </div>
+            <div className="flex flex-col gap-2 my-4">
+              <SkeletonText className="w-full h-4" />
+              <SkeletonText className="w-3/4 h-4" />
+            </div>
+            <Skeleton className="w-full h-8 rounded-lg" />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export function ControlCenterPage() {
-  const { predictData, simulateData, recentEvents, isSimulationMode, addToast } = useData();
+  const {
+    predictData,
+    simulateData,
+    recentEvents,
+    isSimulationMode,
+    addToast,
+    isLoading,
+    isRetrying,
+    hasError,
+    errorMessage,
+    retryLoad,
+  } = useData();
   const { user } = useAuth();
   const reportRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  if (!predictData || !simulateData) return null;
+  if (isLoading) {
+    return <ControlCenterSkeleton />;
+  }
+
+  if (hasError || !predictData || !simulateData) {
+    return (
+      <div className="py-12 max-w-2xl mx-auto">
+        <ErrorState
+          title="Backend Telemetry Unavailable"
+          message={errorMessage || 'Unable to connect to the Grid Pulse backend. The FastAPI service may be stopped or unreachable.'}
+          onRetry={retryLoad}
+          isRetrying={isRetrying}
+        />
+      </div>
+    );
+  }
 
   const displayCapacityPct =
     (simulateData.simulated_peak_kw / predictData.transformer_capacity_kw) * 100;

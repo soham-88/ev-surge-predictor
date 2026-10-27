@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { api } from '../services/api';
 import type { PredictResponse, ExplainResponse, SimulateResponse, MetricsResponse } from '../types/telemetry';
@@ -17,6 +17,15 @@ export interface SystemSettings {
   transformerCapacityKw: number;
 }
 
+export interface HeaderKpisState {
+  gridFrequencyHz: number | null;
+  ambientTempC: number | null;
+  latencyMs: number | null;
+  isOffline: boolean;
+  isWeatherLive: boolean;
+  isWeatherStale: boolean;
+}
+
 interface DataContextType {
   settings: SystemSettings;
   updateSettings: (newSettings: Partial<SystemSettings>) => void;
@@ -24,11 +33,7 @@ interface DataContextType {
   explainData: ExplainResponse | null;
   simulateData: SimulateResponse | null;
   metricsData: MetricsResponse | null;
-  headerKpis: {
-    gridFrequencyHz: number;
-    ambientTempC: number;
-    latencyMs: number;
-  };
+  headerKpis: HeaderKpisState;
   bayStates: Record<number, { state: 'ACTIVE' | 'THROTTLED' | 'SHED' | 'IDLE'; kwDraw: number }>;
   handleSimulate: (params: {
     temp_delta_c: number;
@@ -37,6 +42,10 @@ interface DataContextType {
   }) => Promise<SimulateResponse>;
   resetSimulation: () => void;
   isLoading: boolean;
+  isRetrying: boolean;
+  hasError: boolean;
+  errorMessage: string | null;
+  retryLoad: () => Promise<void>;
   isOffline: boolean;
   isSimulationMode: boolean;
   activeSimulationParams: {
@@ -60,7 +69,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [simulateData, setSimulateData] = useState<SimulateResponse | null>(null);
   const [metricsData, setMetricsData] = useState<MetricsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [realLatencyMs, setRealLatencyMs] = useState<number | null>(null);
+  const [weatherState, setWeatherState] = useState<{
+    temp: number | null;
+    isLive: boolean;
+    isStale: boolean;
+  }>({
+    temp: null,
+    isLive: false,
+    isStale: false,
+  });
   const [isSimulationMode, setIsSimulationMode] = useState(false);
   const [activeSimulationParams, setActiveSimulationParams] = useState<{
     temp_delta_c: number;
@@ -83,7 +105,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const mockTelemetry = useMockTelemetry(isSimulationMode || isPaused);
 
-  const loadBaseData = async () => {
+  const fetchWeather = useCallback(async () => {
+    try {
+      const data = await api.getWeather();
+      if (data && typeof data.temperature_c === 'number') {
+        setWeatherState({
+          temp: data.temperature_c,
+          isLive: true,
+          isStale: false,
+        });
+        return data;
+      }
+      throw new Error('Invalid weather data');
+    } catch (error) {
+      setWeatherState(prev => ({
+        temp: prev.temp,
+        isLive: false,
+        isStale: prev.temp !== null,
+      }));
+    }
+  }, []);
+
+  const loadBaseData = async (isRetry = false) => {
+    if (isRetry) {
+      setIsRetrying(true);
+    } else {
+      setIsLoading(true);
+    }
+    setHasError(false);
+    setErrorMessage(null);
+
     try {
       const [pRes, eRes, sRes, mRes] = await Promise.all([
         api.predict(),
@@ -91,22 +142,82 @@ export function DataProvider({ children }: { children: ReactNode }) {
         api.simulate({ temp_delta_c: 0, traffic_surge_pct: 0, forced_outage_stalls: [] }),
         api.metrics(),
       ]);
+      const measuredLatency = api.getLastPredictLatency();
+      setRealLatencyMs(measuredLatency);
       setPredictData(pRes);
       setExplainData(eRes);
       setSimulateData(sRes);
       setMetricsData(mRes);
       setIsOffline(false);
-    } catch (error) {
-      console.warn('Failed to load data from backend, falling back to mock telemetry');
+      setHasError(false);
+
+      // Sync weather
+      fetchWeather();
+    } catch (error: any) {
+      console.warn('Failed to load data from backend:', error);
       setIsOffline(true);
+      setHasError(true);
+      setRealLatencyMs(null);
+      setWeatherState(prev => ({
+        temp: prev.temp,
+        isLive: false,
+        isStale: prev.temp !== null,
+      }));
+      setErrorMessage(
+        error?.message === 'Unauthorized'
+          ? 'Session expired. Please log in again.'
+          : 'Unable to connect to the Grid Pulse backend. The FastAPI service may be stopped or unreachable.'
+      );
+      setPredictData(null);
+      setExplainData(null);
+      setSimulateData(null);
     } finally {
       setIsLoading(false);
+      setIsRetrying(false);
     }
   };
 
   useEffect(() => {
     loadBaseData();
   }, []);
+
+  // Periodic weather poll (every 60s when connected)
+  useEffect(() => {
+    if (isOffline) return;
+    const interval = setInterval(fetchWeather, 60000);
+    return () => clearInterval(interval);
+  }, [isOffline, fetchWeather]);
+
+  // Periodic connectivity & predict sync when live feed is active
+  useEffect(() => {
+    if (isPaused || isSimulationMode) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const pRes = await api.predict();
+        const rtt = api.getLastPredictLatency();
+        setRealLatencyMs(rtt);
+        if (isOffline || hasError) {
+          setIsOffline(false);
+          setHasError(false);
+          setErrorMessage(null);
+          setPredictData(pRes);
+          fetchWeather();
+        }
+      } catch (err) {
+        setRealLatencyMs(null);
+        setIsOffline(true);
+        setHasError(true);
+        setWeatherState(prev => ({
+          temp: prev.temp,
+          isLive: false,
+          isStale: prev.temp !== null,
+        }));
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isPaused, isSimulationMode, isOffline, hasError, fetchWeather]);
 
   const handleSimulate = async (params: {
     temp_delta_c: number;
@@ -140,9 +251,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const currentPredict = isOffline ? mockTelemetry.predictData : predictData;
-  const currentExplain = isOffline ? mockTelemetry.explainData : explainData;
-  const currentSimulate = isOffline && !isSimulationMode ? mockTelemetry.simulateData : simulateData;
+  const currentPredict = hasError ? null : (isOffline ? mockTelemetry.predictData : predictData);
+  const currentExplain = hasError ? null : (isOffline ? mockTelemetry.explainData : explainData);
+  const currentSimulate = hasError ? null : (isOffline && !isSimulationMode ? mockTelemetry.simulateData : simulateData);
 
   const outPredict = currentPredict ? JSON.parse(JSON.stringify(currentPredict)) as PredictResponse : null;
   const outSimulate = currentSimulate ? JSON.parse(JSON.stringify(currentSimulate)) as SimulateResponse : null;
@@ -236,6 +347,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const isBackendUnreachable = isOffline || hasError;
+
+  const headerKpis: HeaderKpisState = {
+    gridFrequencyHz: isBackendUnreachable ? null : mockTelemetry.headerKpis.gridFrequencyHz,
+    ambientTempC: weatherState.temp,
+    latencyMs: isBackendUnreachable ? null : realLatencyMs,
+    isOffline: isBackendUnreachable,
+    isWeatherLive: !isBackendUnreachable && weatherState.isLive,
+    isWeatherStale: weatherState.isStale,
+  };
+
   return (
     <DataContext.Provider
       value={{
@@ -245,11 +367,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         explainData: currentExplain,
         simulateData: outSimulate,
         metricsData,
-        headerKpis: mockTelemetry.headerKpis,
+        headerKpis,
         bayStates: currentBayStates,
         handleSimulate,
         resetSimulation,
         isLoading,
+        isRetrying,
+        hasError,
+        errorMessage,
+        retryLoad: () => loadBaseData(true),
         isOffline,
         isSimulationMode,
         activeSimulationParams,

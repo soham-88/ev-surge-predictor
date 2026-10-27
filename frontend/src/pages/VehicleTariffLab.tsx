@@ -1,8 +1,9 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { Bike, Car, Zap, Info, ArrowUpRight, Gauge, Activity } from 'lucide-react';
+import { Bike, Car, Zap, Gauge, Activity, Info, ArrowUpRight } from 'lucide-react';
 import { useTariff } from '../context/TariffContext';
 import { AnimatedNumber } from '../components/ui/AnimatedNumber';
+import { Skeleton, SkeletonText, ErrorState } from '../components/ui';
 
 interface VehicleTariffData {
   vehicle_type: string;
@@ -65,6 +66,42 @@ const CATEGORIES: CategoryConfig[] = [
   },
 ];
 
+function VehicleTariffSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-gap-grid">
+      {Array.from({ length: 3 }).map((_, idx) => (
+        <div
+          key={idx}
+          className="rounded-2xl p-6 backdrop-blur-xl bg-surface-container-lowest/60 border border-border-subtle/50 flex flex-col justify-between min-h-[380px]"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <Skeleton className="w-12 h-12 rounded-xl" />
+              <Skeleton className="w-16 h-6 rounded-full" />
+            </div>
+            <SkeletonText className="w-3/4 h-7 mb-2" />
+            <SkeletonText className="w-1/2 h-4 mb-6" />
+          </div>
+
+          <div className="my-4 p-4 rounded-xl bg-surface-container-lowest/50 border border-border-subtle/50 flex flex-col gap-3">
+            <SkeletonText className="w-40 h-3" />
+            <Skeleton className="w-28 h-10 rounded" />
+            <div className="pt-3 border-t border-border-subtle/40 flex justify-between">
+              <SkeletonText className="w-24 h-3" />
+              <SkeletonText className="w-20 h-3" />
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-between">
+            <SkeletonText className="w-28 h-4" />
+            <SkeletonText className="w-16 h-4" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function VehicleTariffLab() {
   const { baseSurgeMultiplier, isSimulationActive } = useTariff();
   const [tariffs, setTariffs] = useState<Record<string, VehicleTariffData | null>>({
@@ -73,10 +110,18 @@ export function VehicleTariffLab() {
     fast_charging: null,
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
+  const [hasError, setHasError] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isCancelled = false;
-    setIsLoading(true);
+  const fetchTariffs = useCallback(async (isRetry = false) => {
+    if (isRetry) {
+      setIsRetrying(true);
+    } else {
+      setIsLoading(true);
+    }
+    setHasError(false);
+    setErrorMessage(null);
 
     const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const API_BASE = rawApiUrl.endsWith('/api/v1')
@@ -84,44 +129,45 @@ export function VehicleTariffLab() {
       : `${rawApiUrl.replace(/\/+$/, '')}/api/v1`;
 
     const fetchCategory = async (type: string): Promise<VehicleTariffData | null> => {
-      try {
-        const res = await fetch(`${API_BASE}/tariff/vehicle-adjusted`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            base_surge_multiplier: baseSurgeMultiplier,
-            vehicle_type: type,
-          }),
-        });
-        if (!res.ok) {
-          return null;
-        }
-        return await res.json();
-      } catch (err) {
-        console.warn(`Could not reach /api/v1/tariff/vehicle-adjusted for ${type}`, err);
-        return null;
+      const res = await fetch(`${API_BASE}/tariff/vehicle-adjusted`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_surge_multiplier: baseSurgeMultiplier,
+          vehicle_type: type,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to calculate tariff for ${type}`);
       }
+      return await res.json();
     };
 
-    Promise.all([
-      fetchCategory('two_wheeler'),
-      fetchCategory('standard_4w'),
-      fetchCategory('fast_charging'),
-    ]).then(([twoW, std4w, fastC]) => {
-      if (!isCancelled) {
-        setTariffs({
-          two_wheeler: twoW,
-          standard_4w: std4w,
-          fast_charging: fastC,
-        });
-        setIsLoading(false);
-      }
-    });
-
-    return () => {
-      isCancelled = true;
-    };
+    try {
+      const [twoW, std4w, fastC] = await Promise.all([
+        fetchCategory('two_wheeler'),
+        fetchCategory('standard_4w'),
+        fetchCategory('fast_charging'),
+      ]);
+      setTariffs({
+        two_wheeler: twoW,
+        standard_4w: std4w,
+        fast_charging: fastC,
+      });
+      setHasError(false);
+    } catch (err: any) {
+      console.warn('Could not reach /api/v1/tariff/vehicle-adjusted', err);
+      setHasError(true);
+      setErrorMessage('Unable to connect to the Vehicle Tariff service. The backend may be offline.');
+    } finally {
+      setIsLoading(false);
+      setIsRetrying(false);
+    }
   }, [baseSurgeMultiplier]);
+
+  useEffect(() => {
+    fetchTariffs(false);
+  }, [fetchTariffs]);
 
   // Compute dynamic comparison between Fast-Charging and Standard 4W
   const fcData = tariffs.fast_charging;
@@ -207,23 +253,35 @@ export function VehicleTariffLab() {
       </div>
 
       {/* 3 Glassmorphism Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-gap-grid">
-        {CATEGORIES.map((cat, idx) => {
-          const tariff = tariffs[cat.type];
-          const finalMult = tariff?.final_tariff_multiplier ?? (baseSurgeMultiplier * cat.defaultMultiplier);
-          const vehicleMult = tariff?.vehicle_multiplier ?? cat.defaultMultiplier;
-          const avgPower = tariff?.avg_power_kw ?? cat.defaultKw;
-          const label = tariff?.vehicle_label ?? cat.fallbackLabel;
+      {isLoading ? (
+        <VehicleTariffSkeleton />
+      ) : hasError && !tariffs.two_wheeler && !tariffs.standard_4w && !tariffs.fast_charging ? (
+        <div className="py-8 max-w-2xl mx-auto w-full">
+          <ErrorState
+            title="Vehicle Tariff Engine Offline"
+            message={errorMessage || 'Unable to connect to the dynamic vehicle tariff endpoint. Please ensure the backend is running.'}
+            onRetry={() => fetchTariffs(true)}
+            isRetrying={isRetrying}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-gap-grid">
+          {CATEGORIES.map((cat, idx) => {
+            const tariff = tariffs[cat.type];
+            const finalMult = tariff?.final_tariff_multiplier ?? (baseSurgeMultiplier * cat.defaultMultiplier);
+            const vehicleMult = tariff?.vehicle_multiplier ?? cat.defaultMultiplier;
+            const avgPower = tariff?.avg_power_kw ?? cat.defaultKw;
+            const label = tariff?.vehicle_label ?? cat.fallbackLabel;
 
-          // Fast charging condition: highlight with red/amber glowing border if final_tariff_multiplier > 2.0
-          const isHighCost = cat.type === 'fast_charging' && finalMult > 2.0;
+            // Fast charging condition: highlight with red/amber glowing border if final_tariff_multiplier > 2.0
+            const isHighCost = cat.type === 'fast_charging' && finalMult > 2.0;
 
-          return (
-            <motion.div
-              key={cat.type}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: idx * 0.1 }}
+            return (
+              <motion.div
+                key={cat.type}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: idx * 0.05 }}
               style={
                 isHighCost
                   ? {
@@ -318,12 +376,13 @@ export function VehicleTariffLab() {
           );
         })}
       </div>
+      )}
 
       {/* Auto-generated Comparison Sentence Callout Tile */}
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
+        transition={{ duration: 0.25, delay: 0.1 }}
         className="p-6 rounded-2xl bg-glass-fill backdrop-blur-xl border border-border-subtle relative overflow-hidden shadow-lg"
       >
         <div className="pointer-events-none absolute -left-12 -top-12 w-40 h-40 rounded-full bg-primary/10 blur-3xl" />
