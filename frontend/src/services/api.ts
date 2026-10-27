@@ -16,12 +16,17 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
     if (response.status === 401) {
       localStorage.removeItem('token');
       // A quick reload to force the user to login page if token is dead
-      window.dispatchEvent(new Event('auth-unauthorized'));
+      window.dispatchEvent(new CustomEvent('auth-unauthorized', { detail: { message: 'Session expired' } }));
     }
     throw { status: response.status, message: 'Unauthorized' };
   }
   return response;
 }
+
+let lastPredictLatencyMs: number | null = null;
+let lastPredictSuccess: boolean = false;
+let lastWeatherSuccess: boolean = false;
+let lastKnownWeatherTemp: number | null = null;
 
 export const api = {
   async login(username: string, password: string) {
@@ -45,26 +50,81 @@ export const api = {
   },
 
   async getWeather() {
-    const response = await fetchWithAuth(`${API_BASE_URL}/weather/current`);
-    if (!response.ok) throw new Error('API Error');
-    return await response.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/weather/current`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        lastWeatherSuccess = false;
+        throw new Error('API Error');
+      }
+      const data = await response.json();
+      lastWeatherSuccess = true;
+      if (typeof data?.temperature_c === 'number') {
+        lastKnownWeatherTemp = data.temperature_c;
+      }
+      return data;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastWeatherSuccess = false;
+      throw err;
+    }
   },
 
   async predict(): Promise<PredictResponse> {
-    const response = await fetchWithAuth(`${API_BASE_URL}/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        timestamp: new Date().toISOString(),
-        ambient_temp_c: 36.5,
-        traffic_inflow_index: 82,
-        active_plugs: 7,
-        grid_frequency_hz: 59.92,
-        load_lags_kw: [142.0, 158.5, 175.0, 192.0],
-      }),
-    });
-    if (!response.ok) throw new Error('API Error');
-    return await response.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const startTime = performance.now();
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          ambient_temp_c: 36.5,
+          traffic_inflow_index: 82,
+          active_plugs: 7,
+          grid_frequency_hz: 59.92,
+          load_lags_kw: [142.0, 158.5, 175.0, 192.0],
+        }),
+      });
+      clearTimeout(timeoutId);
+      const latencyMs = performance.now() - startTime;
+      if (!response.ok) {
+        lastPredictLatencyMs = null;
+        lastPredictSuccess = false;
+        throw new Error('API Error');
+      }
+      const data = await response.json();
+      lastPredictLatencyMs = latencyMs;
+      lastPredictSuccess = true;
+      return data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastPredictLatencyMs = null;
+      lastPredictSuccess = false;
+      throw error;
+    }
+  },
+
+  getLastPredictLatency(): number | null {
+    return lastPredictLatencyMs;
+  },
+
+  isLastPredictSuccess(): boolean {
+    return lastPredictSuccess;
+  },
+
+  isLastWeatherSuccess(): boolean {
+    return lastWeatherSuccess;
+  },
+
+  getLastKnownTemp(): number | null {
+    return lastKnownWeatherTemp;
   },
 
   async explain(customPayload?: Partial<{

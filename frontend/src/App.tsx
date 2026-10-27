@@ -8,6 +8,7 @@ import { BatchAnalysis } from './pages/BatchAnalysis';
 import { VehicleTariffLab } from './pages/VehicleTariffLab';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TariffProvider } from './context/TariffContext';
+import { ToastProvider } from './context/ToastContext';
 import { LoginPage } from './pages/LoginPage';
 
 function AppContent() {
@@ -48,7 +49,9 @@ function App() {
   return (
     <TariffProvider>
       <AuthProvider>
-        <AppContent />
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
       </AuthProvider>
     </TariffProvider>
   );

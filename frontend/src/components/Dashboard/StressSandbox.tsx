@@ -7,16 +7,24 @@ interface Props {
     temp_delta_c: number;
     traffic_surge_pct: number;
     forced_outage_stalls: number[];
-  }) => void;
+  }) => void | Promise<void>;
   isSimulationMode: boolean;
   baselineKw: number;
   simulatedKw: number;
+  isApplying?: boolean;
 }
 
-export function StressSandbox({ onSimulate, isSimulationMode, baselineKw, simulatedKw }: Props) {
+export function StressSandbox({
+  onSimulate,
+  isSimulationMode,
+  baselineKw,
+  simulatedKw,
+  isApplying = false,
+}: Props) {
   const { simulationParams, setTempDelta, setTrafficSurgePct, setOutageStalls } = useTariff();
 
   const handleApply = () => {
+    if (isApplying) return;
     onSimulate({
       temp_delta_c: simulationParams.tempDelta,
       traffic_surge_pct: simulationParams.trafficSurgePct,
@@ -80,9 +88,17 @@ export function StressSandbox({ onSimulate, isSimulationMode, baselineKw, simula
         </div>
         <button 
           onClick={handleApply}
-          className="px-6 py-2 rounded border border-primary/50 text-primary font-label-mono text-label-mono font-bold hover:bg-primary/10 transition-colors"
+          disabled={isApplying}
+          className="px-6 py-2 rounded border border-primary/50 text-primary font-label-mono text-label-mono font-bold hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
         >
-          Apply Simulation
+          {isApplying ? (
+            <>
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span>APPLYING...</span>
+            </>
+          ) : (
+            <span>Apply Simulation</span>
+          )}
         </button>
       </div>
     </Tile>

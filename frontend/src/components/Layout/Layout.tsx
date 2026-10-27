@@ -5,19 +5,8 @@ import { SideNavBar } from '../Dashboard/SideNavBar';
 import { useData } from '../../context/DataContext';
 
 export function Layout() {
-  const { predictData, isLoading, headerKpis, toasts, dismissToast } = useData();
+  const { headerKpis, toasts, dismissToast } = useData();
   const location = useLocation();
-
-  if (isLoading || !predictData) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-text-secondary">
-        <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin border-primary" />
-        <span className="font-label-mono text-label-mono tracking-widest uppercase">
-          INITIALIZING GRID PULSE...
-        </span>
-      </div>
-    );
-  }
 
   return (
     <div className="relative min-h-screen flex flex-col overflow-x-hidden selection:bg-primary/30 text-text-primary bg-background">
@@ -26,10 +15,13 @@ export function Layout() {
 
       <div className="relative z-10 flex flex-col flex-1">
         <HeaderKPIs
-        latency={headerKpis.latencyMs}
-        gridFrequency={headerKpis.gridFrequencyHz}
-        ambientTemp={headerKpis.ambientTempC}
-      />
+          latency={headerKpis.latencyMs}
+          gridFrequency={headerKpis.gridFrequencyHz}
+          ambientTemp={headerKpis.ambientTempC}
+          isBackendOffline={headerKpis.isOffline}
+          isWeatherLive={headerKpis.isWeatherLive}
+          isWeatherStale={headerKpis.isWeatherStale}
+        />
 
         <div className="flex flex-1 pt-16">
           <SideNavBar />
@@ -40,7 +32,7 @@ export function Layout() {
                 initial={{ opacity: 0, y: 10, filter: 'blur(10px)' }}
                 animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                 exit={{ opacity: 0, y: -10, filter: 'blur(10px)' }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
               >
                 <Outlet />
               </motion.div>
@@ -50,7 +42,7 @@ export function Layout() {
       </div>
 
       {/* Global Toasts Container */}
-      <div className="fixed top-20 right-4 md:right-8 z-100 flex flex-col gap-3 w-full max-w-sm pointer-events-none">
+      <div className="fixed bottom-6 right-4 md:right-8 z-50 flex flex-col gap-3 w-full max-w-sm pointer-events-none">
         <AnimatePresence>
           {toasts.map(toast => (
             <motion.div
