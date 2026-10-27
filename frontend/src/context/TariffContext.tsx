@@ -6,16 +6,21 @@ export interface SimulationParams {
   outageStalls: number;
 }
 
-const DEFAULT_SIMULATION_PARAMS: SimulationParams = {
+export const DEFAULT_SIMULATION_PARAMS: SimulationParams = {
   tempDelta: 0,
   trafficSurgePct: 0,
   outageStalls: 0,
 };
 
-interface TariffContextType {
+export interface TariffContextType {
   baseSurgeMultiplier: number;
   isSimulationActive: boolean;
   simulationParams: SimulationParams;
+  setSimulationParams: React.Dispatch<React.SetStateAction<SimulationParams>>;
+  setTempDelta: (tempDelta: number) => void;
+  setTrafficSurgePct: (trafficSurgePct: number) => void;
+  setOutageStalls: (outageStalls: number) => void;
+  setIsSimulationActive: (active: boolean) => void;
   setSimulationTariff: (multiplier: number, params?: SimulationParams) => void;
   resetToLive: (liveMultiplier: number) => void;
 }
@@ -26,6 +31,18 @@ export function TariffProvider({ children }: { children: ReactNode }) {
   const [baseSurgeMultiplier, setBaseSurgeMultiplier] = useState<number>(1.0);
   const [isSimulationActive, setIsSimulationActive] = useState<boolean>(false);
   const [simulationParams, setSimulationParams] = useState<SimulationParams>(DEFAULT_SIMULATION_PARAMS);
+
+  const setTempDelta = (tempDelta: number) => {
+    setSimulationParams(prev => ({ ...prev, tempDelta }));
+  };
+
+  const setTrafficSurgePct = (trafficSurgePct: number) => {
+    setSimulationParams(prev => ({ ...prev, trafficSurgePct }));
+  };
+
+  const setOutageStalls = (outageStalls: number) => {
+    setSimulationParams(prev => ({ ...prev, outageStalls }));
+  };
 
   const setSimulationTariff = (multiplier: number, params?: SimulationParams) => {
     setBaseSurgeMultiplier(multiplier);
@@ -47,6 +64,11 @@ export function TariffProvider({ children }: { children: ReactNode }) {
         baseSurgeMultiplier,
         isSimulationActive,
         simulationParams,
+        setSimulationParams,
+        setTempDelta,
+        setTrafficSurgePct,
+        setOutageStalls,
+        setIsSimulationActive,
         setSimulationTariff,
         resetToLive,
       }}
