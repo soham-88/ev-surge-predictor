@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
 import { Tile } from '../ui/Tile';
+import { StyledSlider } from '../ui/StyledSlider';
+import { useTariff } from '../../context/TariffContext';
 
 interface Props {
   onSimulate: (params: {
@@ -12,29 +13,14 @@ interface Props {
   simulatedKw: number;
 }
 
-import { StyledSlider } from '../ui/StyledSlider';
-import { useTariff } from '../../context/TariffContext';
-
 export function StressSandbox({ onSimulate, isSimulationMode, baselineKw, simulatedKw }: Props) {
-  const { simulationParams, isSimulationActive } = useTariff();
-  const [tempDelta, setTempDelta] = useState(simulationParams.tempDelta);
-  const [trafficSurge, setTrafficSurge] = useState(simulationParams.trafficSurgePct);
-  const [forcedOutageCount, setForcedOutageCount] = useState(simulationParams.outageStalls);
-
-  // Reset sliders when simulation is reset externally
-  useEffect(() => {
-    if (!isSimulationMode || !isSimulationActive) {
-      setTempDelta(0);
-      setTrafficSurge(0);
-      setForcedOutageCount(0);
-    }
-  }, [isSimulationMode, isSimulationActive]);
+  const { simulationParams, setTempDelta, setTrafficSurgePct, setOutageStalls } = useTariff();
 
   const handleApply = () => {
     onSimulate({
-      temp_delta_c: tempDelta,
-      traffic_surge_pct: trafficSurge,
-      forced_outage_stalls: Array.from({ length: forcedOutageCount }, (_, i) => i + 1),
+      temp_delta_c: simulationParams.tempDelta,
+      traffic_surge_pct: simulationParams.trafficSurgePct,
+      forced_outage_stalls: Array.from({ length: simulationParams.outageStalls }, (_, i) => i + 1),
     });
   };
 
@@ -52,32 +38,32 @@ export function StressSandbox({ onSimulate, isSimulationMode, baselineKw, simula
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <StyledSlider
           label="Temperature Δ"
-          value={tempDelta}
+          value={simulationParams.tempDelta}
           min={0}
           max={15}
           step={1}
           unit="°C"
-          prefix={tempDelta > 0 ? '+' : ''}
+          prefix={simulationParams.tempDelta > 0 ? '+' : ''}
           onChange={setTempDelta}
         />
         <StyledSlider
           label="Traffic Surge"
-          value={trafficSurge}
+          value={simulationParams.trafficSurgePct}
           min={0}
           max={100}
           step={5}
           unit="%"
           prefix="+"
-          onChange={setTrafficSurge}
+          onChange={setTrafficSurgePct}
         />
         <StyledSlider
           label="Forced Outage Stalls"
-          value={forcedOutageCount}
+          value={simulationParams.outageStalls}
           min={0}
           max={8}
           step={1}
           unit=" bays"
-          onChange={setForcedOutageCount}
+          onChange={setOutageStalls}
         />
       </div>
       
