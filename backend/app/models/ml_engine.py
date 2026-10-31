@@ -187,7 +187,7 @@ class MLEngine:
             attributions.append({
                 "feature": fname,
                 "value": round(float(scaled_features[0, i]), 4),
-                "shap_delta_kw": round(float(shap_values[0, i]), 2),
+                "shap_delta_kw": round(float(shap_values[0, i]), 4),
             })
 
         # Sort by absolute SHAP contribution (descending)
