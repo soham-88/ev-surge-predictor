@@ -91,7 +91,7 @@ export function ShapPage() {
           ambient_temp_c: simAmbientTemp,
           traffic_inflow_index: simTraffic,
           active_plugs: simPlugs,
-          grid_frequency_hz: 59.92,
+          grid_frequency_hz: 49.92,
           load_lags_kw: [142.0, 158.5, 175.0, 192.0],
         };
 
@@ -129,6 +129,12 @@ export function ShapPage() {
       return () => clearInterval(interval);
     }
   }, [fetchExplanation, isSimulationActive]);
+
+  useEffect(() => {
+    if (!isSimulationActive && contextExplainData) {
+      setExplainData(contextExplainData);
+    }
+  }, [contextExplainData, isSimulationActive]);
 
   const activeExplainData = explainData || contextExplainData;
 

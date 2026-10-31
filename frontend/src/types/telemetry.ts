@@ -82,3 +82,31 @@ export interface BatchPredictResponse {
   download_url: string;
 }
 
+export const FEATURE_READABLE_NAMES: Record<string, string> = {
+  ambient_temp_c: 'Ambient Temperature',
+  traffic_inflow_index: 'Traffic Inflow Index',
+  active_plugs: 'Active Plugs',
+  grid_frequency_hz: 'Grid Frequency',
+  load_lag_15m: '15m Load Lag',
+  load_lag_30m: '30m Load Lag',
+  load_lag_45m: '45m Load Lag',
+  load_lag_60m: '60m Load Lag',
+  rolling_mean_60m: '60m Rolling Mean',
+  rolling_std_60m: '60m Rolling Std',
+  plug_delta_15m: '15m Plug Delta',
+  hour_sin: 'Hour Cycle (sin)',
+  hour_cos: 'Hour Cycle (cos)',
+  day_sin: 'Day Cycle (sin)',
+  day_cos: 'Day Cycle (cos)',
+};
+
+export function getFeatureReadableName(feature: string): string {
+  if (FEATURE_READABLE_NAMES[feature]) {
+    return FEATURE_READABLE_NAMES[feature];
+  }
+  return feature
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+

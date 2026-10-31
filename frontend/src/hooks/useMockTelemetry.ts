@@ -19,7 +19,7 @@ export function useMockTelemetry(isPaused: boolean = false) {
     explainData: mockExplainResponse,
     simulateData: mockSimulateResponse,
     headerKpis: {
-      gridFrequencyHz: 59.92,
+      gridFrequencyHz: 49.92,
       ambientTempC: 36.5,
       latencyMs: 0.48,
     },
@@ -41,9 +41,9 @@ export function useMockTelemetry(isPaused: boolean = false) {
       if (isPaused) return;
       
       setMockData(prev => {
-        // Grid frequency: 59.85 - 60.15 (smooth random walk)
+        // Grid frequency: 49.85 - 50.15 (smooth random walk)
         const freqDelta = (Math.random() - 0.5) * 0.04;
-        const newFreq = Math.max(59.85, Math.min(60.15, prev.headerKpis.gridFrequencyHz + freqDelta));
+        const newFreq = Math.max(49.85, Math.min(50.15, prev.headerKpis.gridFrequencyHz + freqDelta));
 
         // Ambient temp: 28 - 40 (smooth random walk)
         const tempDelta = (Math.random() - 0.5) * 0.2;

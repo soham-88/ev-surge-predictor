@@ -89,7 +89,18 @@ export function BatchAnalysis() {
         setErrorMsg('Missing required columns in CSV.');
         setMissingCols(err.data.detail.expected_columns);
       } else {
-        setErrorMsg(err.data?.detail || 'An unexpected error occurred during batch processing.');
+        const detail = err.data?.detail;
+        let msg = 'An unexpected error occurred during batch processing.';
+        if (typeof detail === 'string') {
+          msg = detail;
+        } else if (detail?.message) {
+          msg = detail.message;
+        } else if (Array.isArray(detail) && detail.length > 0 && detail[0].msg) {
+          msg = detail[0].msg;
+        } else if (typeof detail === 'object') {
+          msg = JSON.stringify(detail);
+        }
+        setErrorMsg(msg);
       }
     }
   };
@@ -104,12 +115,36 @@ export function BatchAnalysis() {
 
   // Prepare chart data
   const chartData = useMemo(() => {
-    if (!result) return [];
-    return result.predictions.map(p => ({
-      ...p,
-      timeLabel: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      critical_point: p.surge_status === 'CRITICAL' ? p.predicted_kw : null
-    }));
+    if (!result || result.predictions.length === 0) return [];
+
+    // Check if the predictions span more than one day
+    const firstTime = new Date(result.predictions[0].timestamp).getTime();
+    const lastTime = new Date(result.predictions[result.predictions.length - 1].timestamp).getTime();
+    const firstDateStr = new Date(result.predictions[0].timestamp).toDateString();
+    const lastDateStr = new Date(result.predictions[result.predictions.length - 1].timestamp).toDateString();
+    const spansMultipleDays = firstDateStr !== lastDateStr || Math.abs(lastTime - firstTime) >= 24 * 3600 * 1000;
+
+    return result.predictions.map(p => {
+      const d = new Date(p.timestamp);
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      const timeStr = `${hours}:${mins}`;
+
+      let timeLabel: string;
+      if (spansMultipleDays) {
+        const month = d.toLocaleDateString('en-US', { month: 'short' });
+        const day = d.getDate();
+        timeLabel = `${month} ${day}, ${timeStr}`;
+      } else {
+        timeLabel = timeStr;
+      }
+
+      return {
+        ...p,
+        timeLabel,
+        critical_point: p.surge_status === 'CRITICAL' ? p.predicted_kw : null
+      };
+    });
   }, [result]);
 
   const paginatedRows = useMemo(() => {
@@ -283,7 +318,7 @@ export function BatchAnalysis() {
               <div className="font-kpi-large text-text-primary">
                 {result.summary.avg_mae_vs_actual_kw !== null ? (
                   <>
-                    <AnimatedNumber value={result.summary.avg_mae_vs_actual_kw} />
+                    <AnimatedNumber value={result.summary.avg_mae_vs_actual_kw} decimals={1} />
                     <span className="text-xl text-text-secondary ml-1">kW</span>
                   </>
                 ) : (

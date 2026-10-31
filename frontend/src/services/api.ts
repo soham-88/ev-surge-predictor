@@ -88,7 +88,7 @@ export const api = {
           ambient_temp_c: 36.5,
           traffic_inflow_index: 82,
           active_plugs: 7,
-          grid_frequency_hz: 59.92,
+          grid_frequency_hz: 49.92,
           load_lags_kw: [142.0, 158.5, 175.0, 192.0],
         }),
       });
@@ -140,7 +140,7 @@ export const api = {
       ambient_temp_c: 36.5,
       traffic_inflow_index: 82,
       active_plugs: 7,
-      grid_frequency_hz: 59.92,
+      grid_frequency_hz: 49.92,
       load_lags_kw: [142.0, 158.5, 175.0, 192.0],
     };
     const response = await fetchWithAuth(`${API_BASE_URL}/explain`, {

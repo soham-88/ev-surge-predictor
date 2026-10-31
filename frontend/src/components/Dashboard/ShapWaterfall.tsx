@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo } from 'react';
 import { animate, stagger } from 'animejs';
 import type { Attribution } from '../../types/telemetry';
+import { getFeatureReadableName } from '../../types/telemetry';
 import { Tile } from '../ui/Tile';
 import { AnimatedNumber } from '../ui/AnimatedNumber';
 
@@ -36,7 +37,7 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
         const isPos = actual > 0;
 
         return {
-          name: a.feature.replace(/_/g, ' '),
+          name: getFeatureReadableName(a.feature),
           actual,
           value: a.value,
           range: [start, end],
@@ -177,13 +178,13 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
       </div>
 
       {/* Chart */}
-      <div className="flex-1 w-full pt-4 pb-8" style={{ minHeight: '300px' }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="flex-1 w-full pt-4 pb-8" style={{ minHeight: `${Math.max(480, waterfallData.length * 32)}px` }}>
+        <ResponsiveContainer width="100%" height={Math.max(480, waterfallData.length * 32)}>
           <BarChart
             layout="vertical"
             data={waterfallData}
             margin={{ top: 5, right: 45, left: 20, bottom: 5 }}
-            barCategoryGap="20%"
+            barCategoryGap="15%"
           >
             <defs>
               <filter id="neonShadowPos" x="-20%" y="-20%" width="140%" height="140%">
@@ -205,8 +206,9 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
             <YAxis
               dataKey="name"
               type="category"
+              interval={0}
               stroke="var(--color-border-subtle)"
-              tick={{ fill: 'var(--color-text-primary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
+              tick={{ fill: 'var(--color-text-primary)', fontSize: 10.5, fontFamily: 'var(--font-label-mono)' }}
               axisLine={false}
               tickLine={false}
               width={160}
