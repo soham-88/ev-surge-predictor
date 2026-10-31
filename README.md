@@ -146,13 +146,15 @@ Evaluated on the same held-out split (1,726 samples) from the 90-day feature pip
 
 | Metric | XGBoost (deployed) | PyTorch LSTM (benchmark) |
 |---|---|---|
-| MAE | 8.81 kW | **7.23 kW** |
-| RMSE | 11.11 kW | **9.06 kW** |
-| Surge recall | 91.5% | **100%** |
-| Inference latency | 0.48 ms / sample | 0.59 ms / sample |
+| MAE | 8.81 kW | 8.64 kW |
+| RMSE | 11.11 kW | 10.88 kW |
+| Surge recall | **91.5%** | 89.8% |
+| Inference latency | **0.45 ms / sample** | 0.56 ms / sample |
 | Explainability | **Exact TreeSHAP** | Black box |
 
-> **Why XGBoost is deployed:** the LSTM scores slightly better on raw metrics, but XGBoost gives exact TreeSHAP attributions, which matter for auditable grid decisions. Promoting the LSTM is deferred until multi-split temporal validation is done.
+> **Why XGBoost is deployed:** Accuracy is comparable between both models, but XGBoost achieves higher surge recall (91.5% vs 89.8%) and provides exact, auditable TreeSHAP feature attributions critical for real-time grid operator decisions. The LSTM serves strictly as an offline benchmark and is not served by any live inference endpoint.
+>
+> **Benchmark note:** The LSTM benchmark was re-trained and re-evaluated with automated round-trip verification against disk artifacts; earlier reported LSTM figures (MAE 7.23 kW, 100% recall) were from an unverified reference and were not reproducible.
 
 ---
 
@@ -220,6 +222,16 @@ Seeded automatically on first backend startup:
 
 These are demo credentials for local use only.
 
+### Sample Data
+Sample CSV files for testing the **Batch Analysis** page (`POST /api/v1/predict/batch`) are located in [`docs/sample-data/`](docs/sample-data/):
+
+| File | Rows | Description |
+|---|---|---|
+| `sample_batch_valid.csv` | 288 | 3 days (15-min intervals) of valid telemetry with all required lag features. |
+| `sample_batch_small.csv` | 24 | First 24 rows (6 hours) of valid telemetry for quick demo uploads. |
+| `sample_batch_legacy_60hz.csv` | 288 | Valid format with `grid_frequency_hz` shifted by +10 Hz (mismatched frequency demo). |
+| `sample_batch_wrong_columns.csv` | 10 | 10 rows with required columns removed (`active_plugs`, `grid_frequency_hz`) to demonstrate 422 schema validation errors. |
+
 ---
 
 ## 📡 API Reference
@@ -268,7 +280,7 @@ ev-surge-predictor/
 │       ├── pages/             # ControlCenter, ShapPage, SandboxPage, BatchAnalysis, VehicleTariffLab
 │       ├── services/api.ts    # API client with JWT handling
 │       └── types/             # TypeScript models
-└── docs/                      # screenshots, audit report, specification
+└── docs/                      # screenshots, audit report, specification, sample-data/
 ```
 
 ---

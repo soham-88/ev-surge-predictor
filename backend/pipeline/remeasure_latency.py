@@ -51,6 +51,8 @@ def main():
     print("\n[1/3] Loading saved model artifacts ...")
     model_xgb = joblib.load(SAVED_MODELS_DIR / "xgboost_model.joblib")
     scaler = joblib.load(SAVED_MODELS_DIR / "scaler.joblib")
+    lstm_scaler_path = SAVED_MODELS_DIR / "lstm_scaler.joblib"
+    lstm_scaler = joblib.load(lstm_scaler_path) if lstm_scaler_path.exists() else scaler
 
     device = torch.device("cpu")
     model_lstm = LSTMPredictor(input_size=len(FEATURE_COLUMNS), hidden_size=64, num_layers=2, dropout=0.2)
@@ -65,9 +67,10 @@ def main():
     split_idx = int(len(X_all) * 0.8)
     X_test_raw = X_all[split_idx:]
     X_test_scaled = scaler.transform(X_test_raw)
+    X_test_lstm_scaled = lstm_scaler.transform(X_test_raw)
 
     sample_xgb = X_test_scaled[:1]  # shape: (1, 15)
-    sample_lstm = torch.FloatTensor(X_test_scaled[:8].reshape(1, 8, len(FEATURE_COLUMNS))).to(device)  # shape: (1, 8, 15)
+    sample_lstm = torch.FloatTensor(X_test_lstm_scaled[:8].reshape(1, 8, len(FEATURE_COLUMNS))).to(device)  # shape: (1, 8, 15)
 
     # 4. Measure latencies with standardized protocol
     print("[3/3] Benchmarking latency (10 warmup, 100 timed iterations, median) ...")
