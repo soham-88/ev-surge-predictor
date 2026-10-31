@@ -38,7 +38,8 @@ from sklearn.preprocessing import StandardScaler
 # ──────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = SCRIPT_DIR.parent
-SAVED_MODELS_DIR = BACKEND_DIR / "saved_models"
+env_models_dir = os.getenv("SAVED_MODELS_DIR")
+SAVED_MODELS_DIR = Path(env_models_dir).resolve() if env_models_dir else BACKEND_DIR / "saved_models"
 SAVED_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 if str(SCRIPT_DIR) not in sys.path:
@@ -61,7 +62,7 @@ def synthesize_telemetry(
       • Weekly seasonality (weekday heavier than weekend)
       • Temperature-correlated load increase  (AC + battery draw)
       • Traffic inflow correlated with rush-hour patterns
-      • Grid frequency perturbations around 60 Hz nominal
+      • Grid frequency perturbations around 50 Hz nominal
       • Stochastic active-plug counts (0-8 bays)
     """
     rng = np.random.default_rng(seed)
@@ -114,8 +115,8 @@ def synthesize_telemetry(
     active_plugs = rng.binomial(8, plug_prob)
     base_load += active_plugs * 5.0  # each plug adds ~5 kW base
 
-    # --- Grid frequency (nominal 60 Hz, small perturbations) ---
-    grid_frequency_hz = 60.0 + rng.normal(0, 0.05, n)
+    # --- Grid frequency (nominal 50 Hz, small perturbations) ---
+    grid_frequency_hz = 50.0 + rng.normal(0, 0.05, n)
     # Heavy load depresses frequency slightly
     grid_frequency_hz -= np.clip((base_load - 150) * 0.0003, 0, None)
 

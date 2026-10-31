@@ -18,6 +18,7 @@ Artifacts saved to  backend/saved_models/:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import sys
 from pathlib import Path
 
@@ -92,6 +93,51 @@ def create_sequences(X: np.ndarray, y: np.ndarray, seq_len: int = 8):
     return np.array(Xs), np.array(ys)
 
 
+def evaluate_lstm(
+    model: nn.Module,
+    X_seq: np.ndarray,
+    y_seq: np.ndarray,
+    device: torch.device,
+    batch_size: int = 64,
+) -> tuple[float, float, float, np.ndarray]:
+    """Single standard evaluation function for LSTM sequence predictions.
+    
+    Returns (mae_kw, rmse_kw, surge_recall_pct, y_pred).
+    """
+    model.eval()
+    ds = TensorDataset(
+        torch.FloatTensor(X_seq),
+        torch.FloatTensor(y_seq),
+    )
+    loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
+    all_preds = []
+    all_targets = []
+
+    with torch.no_grad():
+        for X_batch, y_batch in loader:
+            X_batch = X_batch.to(device)
+            preds = model(X_batch)
+            all_preds.append(preds.cpu().numpy())
+            all_targets.append(y_batch.numpy())
+
+    y_pred = np.concatenate(all_preds)
+    y_true = np.concatenate(all_targets)
+
+    mae = float(mean_absolute_error(y_true, y_pred))
+    rmse = float(np.sqrt(mean_squared_error(y_true, y_pred)))
+
+    TRANSFORMER_CAPACITY = 250.0
+    SURGE_THRESHOLD = 0.80 * TRANSFORMER_CAPACITY  # 200.0 kW
+    actual_surge = y_true >= SURGE_THRESHOLD
+    predicted_surge = y_pred >= SURGE_THRESHOLD
+    if actual_surge.sum() > 0:
+        surge_recall = float((predicted_surge & actual_surge).sum() / actual_surge.sum() * 100.0)
+    else:
+        surge_recall = 100.0
+
+    return mae, rmse, surge_recall, y_pred
+
+
 # ──────────────────────────────────────────────────────────────
 #  3.  Training Loop
 # ──────────────────────────────────────────────────────────────
@@ -142,12 +188,7 @@ def train_lstm(
         torch.FloatTensor(X_train_seq),
         torch.FloatTensor(y_train_seq),
     )
-    test_ds = TensorDataset(
-        torch.FloatTensor(X_test_seq),
-        torch.FloatTensor(y_test_seq),
-    )
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
     # ── Model ──
     n_features = X_train_seq.shape[2]
@@ -173,47 +214,23 @@ def train_lstm(
         if epoch % 10 == 0 or epoch == 1:
             print(f"  Epoch {epoch:3d}/{epochs}  |  Train MSE: {epoch_loss:.4f}")
 
-    # ── Evaluation ──
+    # ── Evaluation (Single standard evaluation function) ──
     print("\n[4/5] Evaluating on test set ...")
-    model.eval()
-    all_preds = []
-    all_targets = []
-
-    with torch.no_grad():
-        for X_batch, y_batch in test_loader:
-            X_batch = X_batch.to(device)
-            preds = model(X_batch)
-            all_preds.append(preds.cpu().numpy())
-            all_targets.append(y_batch.numpy())
-
-    y_pred = np.concatenate(all_preds)
-    y_true = np.concatenate(all_targets)
-
-    mae = mean_absolute_error(y_true, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae, rmse, surge_recall, y_pred = evaluate_lstm(model, X_test_seq, y_test_seq, device, batch_size)
 
     # Measure inference latency using standardized protocol (single sample, 10 warmup, 100 timed iterations, median)
     sample_lstm = torch.FloatTensor(X_test_seq[:1]).to(device)
     with torch.no_grad():
         avg_latency_ms = measure_inference_latency(lambda s: model(s), sample_lstm, n_warmup=10, n_iterations=100)
 
-    # Surge recall: detect events where load > 80% of 250 kW capacity (Safety Margin)
-    TRANSFORMER_CAPACITY = 250.0
-    SURGE_THRESHOLD = 0.80 * TRANSFORMER_CAPACITY  # 200.0 kW
-    actual_surge = y_true >= SURGE_THRESHOLD
-    predicted_surge = y_pred >= SURGE_THRESHOLD
-    if actual_surge.sum() > 0:
-        surge_recall = (predicted_surge & actual_surge).sum() / actual_surge.sum()
-    else:
-        surge_recall = 1.0
-
     metrics = {
         "mae_kw": round(float(mae), 2),
         "rmse_kw": round(float(rmse), 2),
-        "surge_recall_pct": round(float(surge_recall * 100), 1),
-        "latency_ms": avg_latency_ms,
-        "n_test_sequences": len(y_true),
-        "seq_len": seq_len,
+        "surge_recall_pct": round(float(surge_recall), 1),
+        "latency_ms": round(float(avg_latency_ms), 2),
+        "n_test_sequences": int(len(y_test_seq)),
+        "seq_len": int(seq_len),
+        "trained_at": datetime.now(timezone.utc).isoformat(),
     }
 
     print("\n" + "=" * 55)
@@ -224,20 +241,51 @@ def train_lstm(
     print(f"  Surge Recall  : {metrics['surge_recall_pct']:.1f}%")
     print(f"  Avg Latency   : {metrics['latency_ms']:.2f} ms/sample")
     print(f"  Test sequences: {metrics['n_test_sequences']}")
+    print(f"  Trained at    : {metrics['trained_at']}")
     print("=" * 55)
 
     # ── Save artifacts ──
-    print("\n[5/5] Saving LSTM artifacts ...")
+    print("\n[5/5] Saving LSTM artifacts & performing round-trip verification ...")
+    SAVED_MODELS_DIR.mkdir(parents=True, exist_ok=True)
     model_path = SAVED_MODELS_DIR / "lstm_model.pt"
+    scaler_path = SAVED_MODELS_DIR / "lstm_scaler.joblib"
     metrics_path = SAVED_MODELS_DIR / "lstm_metrics.joblib"
 
+    # Save weights and scaler to disk
     torch.save(model.state_dict(), model_path)
+    joblib.dump(scaler, scaler_path)
+
+    # Round-trip verification from saved disk files
+    verify_model = LSTMPredictor(input_size=n_features, hidden_size=64, num_layers=2, dropout=0.2).to(device)
+    verify_model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    verify_scaler = joblib.load(scaler_path)
+
+    X_verify_scaled = verify_scaler.transform(X_test_raw)
+    X_verify_seq, y_verify_seq = create_sequences(X_verify_scaled, y_test_raw, seq_len)
+    v_mae, v_rmse, v_recall, _ = evaluate_lstm(verify_model, X_verify_seq, y_verify_seq, device, batch_size)
+
+    tol = 0.01
+    mae_diff = abs(v_mae - mae)
+    rmse_diff = abs(v_rmse - rmse)
+    recall_diff = abs(v_recall - surge_recall)
+
+    print(f"  Round-trip check: MAE={v_mae:.4f} (diff {mae_diff:.4f}), RMSE={v_rmse:.4f} (diff {rmse_diff:.4f}), Recall={v_recall:.2f}% (diff {recall_diff:.4f}%)")
+
+    if mae_diff > tol or rmse_diff > tol or recall_diff > tol:
+        raise RuntimeError(
+            f"LSTM round-trip verification FAILED! Discrepancy exceeds tolerance {tol}: "
+            f"MAE diff={mae_diff}, RMSE diff={rmse_diff}, Recall diff={recall_diff}"
+        )
+
+    print("  [OK] Round-trip verification PASSED. Writing lstm_metrics.joblib ...")
     joblib.dump(metrics, metrics_path)
 
     model_size_kb = model_path.stat().st_size / 1024
+    scaler_size_kb = scaler_path.stat().st_size / 1024
     print(f"  - lstm_model.pt              ({model_size_kb:7.1f} KB)")
-    print(f"  - lstm_metrics.joblib        (    0.1 KB)")
-    print("\n[OK] LSTM benchmark artifacts saved successfully.")
+    print(f"  - lstm_scaler.joblib         ({scaler_size_kb:7.1f} KB)")
+    print(f"  - lstm_metrics.joblib        (    0.2 KB)")
+    print("\n[OK] LSTM benchmark artifacts verified and saved successfully.")
 
     return metrics
 

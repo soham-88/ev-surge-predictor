@@ -61,14 +61,14 @@ All three critical issues flagged in the initial audit have been **completely re
 * **Details:** The training pipeline outputs entirely real artifacts. Running `train.py` actively generates new versions of `xgboost_model.joblib`, `scaler.joblib`, `shap_explainer.joblib`, `feature_names.joblib`, and `training_metrics.joblib` inside the `backend/saved_models/` directory.
 
 **3. Source of UI Metrics**
-* **Verdict:** **REAL/WORKING (Updated: October 26, 2026)**
+* **Verdict:** **REAL/WORKING (Updated: October 31, 2026)**
 * **Details:** 
   * **XGBoost Metrics (REAL):** The MAE (8.81 kW), RMSE (11.11 kW), and Surge Recall (91.5%) for the primary XGBoost model are dynamically pulled from the model's actual test-set evaluation during training (`training_metrics.joblib`).
-  * **LSTM Metrics & Standardized Latency (REAL):** Both the XGBoost and PyTorch LSTM models are evaluated on the held-out test split using a standardized single-sample latency protocol (N=1, 10 warm-up passes, 100 timed iterations, median reported: 0.48 ms for XGBoost, 0.59 ms for LSTM). Evaluation metrics are dynamically loaded from `training_metrics.joblib` and `lstm_metrics.joblib` by `GET /api/v1/metrics`.
+  * **LSTM Metrics & Standardized Latency (REAL):** Both the XGBoost and PyTorch LSTM models are evaluated on the held-out test split using a standardized single-sample latency protocol (N=1, 10 warm-up passes, 100 timed iterations, median reported: 0.45 ms for XGBoost, 0.56 ms for LSTM). Evaluation metrics are dynamically loaded from `training_metrics.joblib` and `lstm_metrics.joblib` by `GET /api/v1/metrics`.
 
 **4. LSTM Benchmark Implementation**
-* **Verdict:** **REAL/WORKING (Updated: October 26, 2026)**
-* **Details:** The PyTorch LSTM Sequence model is fully implemented in `backend/pipeline/train_lstm.py` (a 2-layer LSTM with 64 hidden units). Running `train_lstm.py` trains the sequence model on the identical 90-day feature pipeline, evaluates test metrics (7.23 kW MAE, 9.06 kW RMSE, 100.0% Surge Recall), and exports `lstm_model.pt` and `lstm_metrics.joblib` into `backend/saved_models/`.
+* **Verdict:** **REAL/WORKING (Updated: October 31, 2026)**
+* **Details:** The PyTorch LSTM Sequence model is fully implemented in `backend/pipeline/train_lstm.py` (a 2-layer LSTM with 64 hidden units). Running `train_lstm.py` trains the sequence model on the identical 90-day feature pipeline, evaluates test metrics (8.64 kW MAE, 10.88 kW RMSE, 89.8% Surge Recall), enforces automated round-trip verification, and exports `lstm_model.pt`, `lstm_scaler.joblib`, and `lstm_metrics.joblib` into `backend/saved_models/`. Earlier reported LSTM figures (7.23 kW MAE, 100% recall) were unverified reference values that could not be reproduced.
 
 **5. Training Data Authenticity**
 * **Verdict:** **PLACEHOLDER**

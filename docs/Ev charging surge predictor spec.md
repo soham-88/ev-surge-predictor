@@ -180,10 +180,10 @@ $$\text{Day}_{\sin} = \sin\left(\frac{2\pi \cdot \text{day}}{7}\right), \quad \t
 | :--- | :--- | :--- |
 | **Model Architecture** | Gradient Boosted Decision Trees | 2-Layer LSTM (64 hidden units) + Dense |
 | **Target Function** | Regressor (RMSE Loss) | Sequential MSE Loss |
-| **Inference Latency** | ~0.48 ms | ~0.59 ms |
-| **Mean Absolute Error (MAE)** | 8.81 kW | 7.23 kW |
-| **Root Mean Squared Error (RMSE)** | 11.11 kW | 9.06 kW |
-| **Surge Recall (> 85% Capacity)** | 91.5% | 100.0% |
+| **Inference Latency** | ~0.45 ms | ~0.56 ms |
+| **Mean Absolute Error (MAE)** | 8.81 kW | 8.64 kW |
+| **Root Mean Squared Error (RMSE)** | 11.11 kW | 10.88 kW |
+| **Surge Recall (> 80% Capacity)** | 91.5% | 89.8% |
 | **Explainability Engine** | Exact Shapley Values (TreeSHAP) | Integrated Gradients |
 4. REST API & Data Contracts Specification
 4.1 POST /api/v1/predict
@@ -281,14 +281,14 @@ json
       "mae_kw": 8.81,
       "rmse_kw": 11.11,
       "surge_recall_pct": 91.5,
-      "latency_ms": 0.48
+      "latency_ms": 0.45
     },
     {
       "name": "PyTorch LSTM Sequence (Benchmark)",
-      "mae_kw": 7.23,
-      "rmse_kw": 9.06,
-      "surge_recall_pct": 100.0,
-      "latency_ms": 0.59
+      "mae_kw": 8.64,
+      "rmse_kw": 10.88,
+      "surge_recall_pct": 89.8,
+      "latency_ms": 0.56
     }
   ]
 }
