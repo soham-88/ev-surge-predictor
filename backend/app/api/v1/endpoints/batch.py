@@ -60,6 +60,22 @@ async def predict_batch(file: UploadFile = File(...), current_user: User = Depen
             detail={"message": "Missing required columns", "expected_columns": missing}
         )
 
+    # Validate grid frequency range (nominal 50 Hz, allowed: 45.0 to 55.0 Hz)
+    freq_series = pd.to_numeric(df['grid_frequency_hz'], errors='coerce')
+    out_of_range_mask = (freq_series < 45.0) | (freq_series > 55.0) | freq_series.isna()
+    out_of_range_count = int(out_of_range_mask.sum())
+    if out_of_range_count > 0:
+        min_freq = float(freq_series.min())
+        max_freq = float(freq_series.max())
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Grid frequency out of range: {out_of_range_count} row{'s' if out_of_range_count != 1 else ''} "
+                f"with frequency between {min_freq:.2f} Hz and {max_freq:.2f} Hz "
+                f"(allowed range: 45.0 to 55.0 Hz)."
+            )
+        )
+
     # Process vectorized inference
     try:
         preds, latency_ms = engine.predict_batch(df)

@@ -21,7 +21,7 @@ export const mockExplainResponse: ExplainResponse = {
     { feature: 'ambient_temp_c', value: 36.5, shap_delta_kw: 42.1 },
     { feature: 'traffic_inflow_index', value: 82, shap_delta_kw: 31.5 },
     { feature: 'load_lag_15m', value: 192.0, shap_delta_kw: 24.2 },
-    { feature: 'grid_frequency_hz', value: 59.92, shap_delta_kw: 6.8 },
+    { feature: 'grid_frequency_hz', value: 49.92, shap_delta_kw: 6.8 },
   ],
 };
 

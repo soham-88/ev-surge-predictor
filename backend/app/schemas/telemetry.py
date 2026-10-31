@@ -21,7 +21,9 @@ class PredictRequest(BaseModel):
     ambient_temp_c: float = Field(..., description="Ambient temperature in Celsius")
     traffic_inflow_index: int = Field(..., ge=0, le=100, description="Local traffic density 0-100")
     active_plugs: int = Field(..., ge=0, le=8, description="Number of active charging bays")
-    grid_frequency_hz: float = Field(..., description="Baseline grid frequency in Hz")
+    grid_frequency_hz: float = Field(
+        ..., ge=45.0, le=55.0, description="Baseline grid frequency in Hz (allowed: 45.0 to 55.0 Hz)"
+    )
     load_lags_kw: List[float] = Field(
         ..., min_length=4, max_length=4,
         description="Historical load lags [t-15m, t-30m, t-45m, t-60m] in kW"

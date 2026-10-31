@@ -154,7 +154,7 @@ Where:
 * $X_{t-\Delta t}$ — Historical station load lags ($t-15\text{m}$, $t-30\text{m}$, $t-45\text{m}$, $t-60\text{m}$)
 * $W_t$ — Environmental weather telemetry (ambient temperature in $^\circ\text{C}$, humidity)
 * $T_t$ — Local traffic inflow index ($0 - 100$) and corridor vehicle density
-* $G_t$ — Baseline electrical grid stability metrics (grid frequency in Hz, nominal 60.0 Hz)
+* $G_t$ — Baseline electrical grid stability metrics (grid frequency in Hz, nominal 50.0 Hz)
 
 3.2 Feature Pipeline
 
@@ -198,7 +198,7 @@ json
   "ambient_temp_c": 36.5,
   "traffic_inflow_index": 82,
   "active_plugs": 7,
-  "grid_frequency_hz": 59.92,
+  "grid_frequency_hz": 49.92,
   "load_lags_kw": [142.0, 158.5, 175.0, 192.0]
 }
 
@@ -232,7 +232,7 @@ json
     { "feature": "ambient_temp_c", "value": 36.5, "shap_delta_kw": 42.1 },
     { "feature": "traffic_inflow_index", "value": 82, "shap_delta_kw": 31.5 },
     { "feature": "load_lag_15m", "value": 192.0, "shap_delta_kw": 24.2 },
-    { "feature": "grid_frequency_hz", "value": 59.92, "shap_delta_kw": 6.8 }
+    { "feature": "grid_frequency_hz", "value": 49.92, "shap_delta_kw": 6.8 }
   ]
 }
 4.3 POST /api/v1/simulate
@@ -299,8 +299,8 @@ Accepts a CSV of historical telemetry rows and runs the model across all of them
 Request: multipart/form-data, field name file, a CSV with columns matching the live telemetry schema, plus an optional actual_kw column (which must represent the target load 2 hours ahead, i.e., at t+2h):
 
 timestamp,ambient_temp_c,traffic_inflow_index,active_plugs,grid_frequency_hz,load_lag_15m,load_lag_30m,load_lag_45m,load_lag_60m,actual_kw
-2026-08-19T14:00:00Z,36.5,82,7,59.92,142.0,158.5,170.0,175.0,175.0
-2026-08-19T14:15:00Z,36.8,79,7,59.91,148.0,142.0,158.5,170.0,236.0
+2026-08-19T14:00:00Z,36.5,82,7,49.92,142.0,158.5,170.0,175.0,175.0
+2026-08-19T14:15:00Z,36.8,79,7,49.91,148.0,142.0,158.5,170.0,236.0
 ...
 
 Response (200 OK):

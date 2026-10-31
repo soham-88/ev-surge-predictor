@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import type { Attribution } from '../../types/telemetry';
+import { getFeatureReadableName } from '../../types/telemetry';
 import { Tile } from '../ui/Tile';
 import { useData } from '../../context/DataContext';
 
@@ -24,7 +25,7 @@ export function ModelComparison({ attributions }: Props) {
   const topFeaturesSentence = useMemo(() => {
     if (!attributions || attributions.length === 0) return '';
     const sorted = [...attributions].sort((a, b) => Math.abs(b.shap_delta_kw) - Math.abs(a.shap_delta_kw));
-    const top2 = sorted.slice(0, 2).map(f => f.feature.replace(/_/g, ' '));
+    const top2 = sorted.slice(0, 2).map(f => getFeatureReadableName(f.feature));
     if (top2.length === 2) {
       return `Prediction driven mainly by ${top2[0]} and ${top2[1]}.`;
     }
@@ -50,10 +51,16 @@ export function ModelComparison({ attributions }: Props) {
     ];
   }, [metrics]);
 
+  const latencyDomainMax = useMemo(() => {
+    if (!metrics || metrics.models.length === 0) return 0.8;
+    const maxVal = Math.max(...metrics.models.map(m => m.latency_ms || 0));
+    return Math.max(0.8, Math.ceil((maxVal + 0.15) * 5) / 5);
+  }, [metrics]);
+
   const dynamicCaption = useMemo(() => {
     if (!metrics || metrics.models.length < 2) {
       if (metrics?.models.length === 1) {
-        return `Deployed: ${metrics.models[0].name}. Deployed model is currently the top performer.`;
+        return `Deployed: ${metrics.models[0].name}. XGBoost provides exact TreeSHAP attributions.`;
       }
       return '';
     }
@@ -61,28 +68,38 @@ export function ModelComparison({ attributions }: Props) {
     const deployed = metrics.models[0];
     const benchmark = metrics.models[1];
 
-    const benchmarkBetterMAE = benchmark.mae_kw < deployed.mae_kw;
-    const benchmarkBetterRMSE = benchmark.rmse_kw < deployed.rmse_kw;
-    const benchmarkBetterRecall = benchmark.surge_recall_pct > deployed.surge_recall_pct;
-    const benchmarkBetterLatency = benchmark.latency_ms < deployed.latency_ms;
+    const getShortName = (name: string) => {
+      if (name.toLowerCase().includes('xgboost')) return 'XGBoost';
+      if (name.toLowerCase().includes('lstm')) return 'LSTM';
+      return name.replace(/\s*\([^)]*\)/g, '').trim();
+    };
 
-    const outperforming =
-      benchmarkBetterMAE || benchmarkBetterRMSE || benchmarkBetterRecall || benchmarkBetterLatency;
-    const leadsOnAll =
-      benchmarkBetterMAE && benchmarkBetterRMSE && benchmarkBetterRecall && benchmarkBetterLatency;
+    const deployedName = getShortName(deployed.name);
+    const benchmarkName = getShortName(benchmark.name);
 
-    let honestyNote = '';
-    if (leadsOnAll) {
-      honestyNote =
-        'Benchmark model currently leads on all metrics; promotion deferred pending resampled-split validation.';
-    } else if (outperforming) {
-      honestyNote =
-        'Benchmark model currently outperforms deployed model on selected metrics; promotion deferred pending resampled-split validation.';
+    const maeDiff = Math.abs(deployed.mae_kw - benchmark.mae_kw);
+    const rmseDiff = Math.abs(deployed.rmse_kw - benchmark.rmse_kw);
+
+    let accuracyStatement = '';
+    if (maeDiff < 0.5 && rmseDiff < 0.5) {
+      accuracyStatement = 'Accuracy is comparable';
     } else {
-      honestyNote = 'Deployed model is currently the top performer across evaluated metrics.';
+      const lowerErrorModel = (deployed.mae_kw + deployed.rmse_kw) < (benchmark.mae_kw + benchmark.rmse_kw)
+        ? deployedName
+        : benchmarkName;
+      accuracyStatement = `${lowerErrorModel} achieves lower error`;
     }
 
-    return `Deployed: ${deployed.name} | Benchmark: ${benchmark.name} — ${honestyNote}`;
+    let recallStatement = '';
+    if (deployed.surge_recall_pct > benchmark.surge_recall_pct) {
+      recallStatement = `${deployedName} has higher surge recall`;
+    } else if (benchmark.surge_recall_pct > deployed.surge_recall_pct) {
+      recallStatement = `${benchmarkName} has higher surge recall`;
+    } else {
+      recallStatement = 'both models achieve equal surge recall';
+    }
+
+    return `${accuracyStatement}, while ${recallStatement}. XGBoost provides exact TreeSHAP attributions and the LSTM is an offline benchmark that is not served live.`;
   }, [metrics]);
 
   if (!metrics) return null;
@@ -205,7 +222,7 @@ export function ModelComparison({ attributions }: Props) {
             </div>
             <div className="flex-1 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={latencyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={latencyChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis 
                     dataKey="name" 
@@ -219,20 +236,23 @@ export function ModelComparison({ attributions }: Props) {
                     tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
                     axisLine={false}
                     tickLine={false}
-                    unit=" ms"
-                    domain={[0, (dataMax: number) => Math.max(0.6, Math.ceil((dataMax + 0.2) * 10) / 10)]}
+                    domain={[0, latencyDomainMax]}
+                    ticks={latencyDomainMax === 0.8 ? [0, 0.2, 0.4, 0.6, 0.8] : undefined}
+                    tickFormatter={(val: number) => `${val.toFixed(1)} ms`}
+                    width={55}
                   />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'rgba(20, 20, 20, 0.95)', borderColor: 'var(--color-border-subtle)', borderRadius: '8px', backdropFilter: 'blur(12px)' }}
                     itemStyle={{ fontFamily: 'var(--font-label-mono)', fontSize: '13px' }}
                     labelStyle={{ color: 'var(--color-text-secondary)', marginBottom: '8px', fontSize: '12px', fontFamily: 'var(--font-label-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
                     cursor={{ fill: 'var(--color-surface-variant)', opacity: 0.4 }}
+                    formatter={(value: any) => [`${Number(value).toFixed(2)} ms`]}
                   />
                   <Legend 
                     wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontFamily: 'var(--font-label-mono)' }}
                   />
-                  <Bar dataKey={metrics.models[0].name} fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                  <Bar dataKey={metrics.models[1].name} fill="var(--color-secondary)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+                  <Bar dataKey={metrics.models[0].name} fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                  <Bar dataKey={metrics.models[1].name} fill="var(--color-secondary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

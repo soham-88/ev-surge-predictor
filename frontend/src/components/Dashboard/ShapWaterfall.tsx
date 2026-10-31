@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo } from 'react';
 import { animate, stagger } from 'animejs';
 import type { Attribution } from '../../types/telemetry';
+import { getFeatureReadableName } from '../../types/telemetry';
 import { Tile } from '../ui/Tile';
 import { AnimatedNumber } from '../ui/AnimatedNumber';
 
@@ -36,7 +37,7 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
         const isPos = actual > 0;
 
         return {
-          name: a.feature.replace(/_/g, ' '),
+          name: getFeatureReadableName(a.feature),
           actual,
           value: a.value,
           range: [start, end],

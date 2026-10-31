@@ -89,7 +89,18 @@ export function BatchAnalysis() {
         setErrorMsg('Missing required columns in CSV.');
         setMissingCols(err.data.detail.expected_columns);
       } else {
-        setErrorMsg(err.data?.detail || 'An unexpected error occurred during batch processing.');
+        const detail = err.data?.detail;
+        let msg = 'An unexpected error occurred during batch processing.';
+        if (typeof detail === 'string') {
+          msg = detail;
+        } else if (detail?.message) {
+          msg = detail.message;
+        } else if (Array.isArray(detail) && detail.length > 0 && detail[0].msg) {
+          msg = detail[0].msg;
+        } else if (typeof detail === 'object') {
+          msg = JSON.stringify(detail);
+        }
+        setErrorMsg(msg);
       }
     }
   };
