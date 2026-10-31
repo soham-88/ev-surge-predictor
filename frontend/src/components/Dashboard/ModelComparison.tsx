@@ -251,8 +251,24 @@ export function ModelComparison({ attributions }: Props) {
                   <Legend 
                     wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontFamily: 'var(--font-label-mono)' }}
                   />
-                  <Bar dataKey={metrics.models[0].name} fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
-                  <Bar dataKey={metrics.models[1].name} fill="var(--color-secondary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                  <Bar
+                    key="latency-bar-deployed"
+                    dataKey={metrics.models[0].name}
+                    fill="var(--color-primary)"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={48}
+                    minPointSize={6}
+                    isAnimationActive={false}
+                  />
+                  <Bar
+                    key="latency-bar-benchmark"
+                    dataKey={metrics.models[1].name}
+                    fill="var(--color-secondary)"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={48}
+                    minPointSize={6}
+                    isAnimationActive={false}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
