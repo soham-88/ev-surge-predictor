@@ -4,6 +4,7 @@
 
 **Predict EV charging load 2 hours ahead. Explain every prediction. Protect the transformer before it overloads.**
 
+[![CI](https://github.com/soham-88/ev-surge-predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/soham-88/ev-surge-predictor/actions/workflows/ci.yml)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)

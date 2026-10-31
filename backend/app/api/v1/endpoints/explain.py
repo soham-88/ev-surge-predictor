@@ -39,8 +39,8 @@ async def explain_prediction(req: PredictRequest, current_user: User = Depends(g
     base_value, attributions = engine.explain(scaled_features)
 
     return ExplainResponse(
-        base_value_kw=round(base_value, 1),
-        predicted_value_kw=round(predicted_load_kw, 1),
+        base_value_kw=round(base_value, 4),
+        predicted_value_kw=round(predicted_load_kw, 4),
         attributions=[
             Attribution(
                 feature=a["feature"],
