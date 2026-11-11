@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ev-surge-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - CORS_ORIGINS=["http://localhost","http://localhost:80","http://localhost:3000","http://localhost:5173"]
+      - DATABASE_URL=sqlite:///./app.db
+    volumes:
+      - backend_db:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - grid-pulse-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ev-surge-frontend
+    ports:
+      - "3000:80"
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - grid-pulse-net
+
+volumes:
+  backend_db:
+
+networks:
+  grid-pulse-net:
+    driver: bridge

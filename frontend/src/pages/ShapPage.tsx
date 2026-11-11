@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ShapWaterfall } from '../components/Dashboard/ShapWaterfall';
+import { GlobalShapImportance } from '../components/Dashboard/GlobalShapImportance';
 import { ModelComparison } from '../components/Dashboard/ModelComparison';
 import { useData } from '../context/DataContext';
 import { useTariff } from '../context/TariffContext';
@@ -61,6 +62,7 @@ export function ShapPage() {
   const { user } = useAuth();
   const { isSimulationActive, simulationParams } = useTariff();
 
+  const [activeTab, setActiveTab] = useState<'local' | 'global'>('local');
   const [explainData, setExplainData] = useState<ExplainResponse | null>(contextExplainData);
   const [isLoading, setIsLoading] = useState<boolean>(!contextExplainData);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
@@ -159,6 +161,39 @@ export function ShapPage() {
 
   return (
     <>
+      {/* View Switcher Header */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-headline-xl text-headline-xl text-text-primary">Model Explainability</h2>
+          <p className="font-body-sm text-text-secondary mt-1">TreeSHAP Feature Attributions & Global Physics</p>
+        </div>
+
+        <div className="flex items-center gap-1.5 p-1 bg-surface-container-low border border-border-subtle rounded-xl self-start sm:self-auto">
+          <button
+            onClick={() => setActiveTab('local')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'local'
+                ? 'bg-primary text-surface-container-lowest font-bold shadow'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">waterfall_chart</span>
+            Local Attribution (Waterfall)
+          </button>
+          <button
+            onClick={() => setActiveTab('global')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'global'
+                ? 'bg-primary text-surface-container-lowest font-bold shadow'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">bar_chart</span>
+            Global Feature Importance
+          </button>
+        </div>
+      </div>
+
       {/* Simulation Active Banner */}
       {isSimulationActive && (
         <div className="mb-6 p-3 rounded-lg bg-status-warning/10 border border-status-warning/30 flex items-center justify-between shadow-[0_0_15px_rgba(245,158,11,0.15)]">
@@ -180,16 +215,22 @@ export function ShapPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-gap-grid auto-rows-min">
-        {/* Full-width SHAP Waterfall */}
-        <ShapWaterfall
-          baseValue={activeExplainData.base_value_kw}
-          predictedValue={activeExplainData.predicted_value_kw}
-          attributions={activeExplainData.attributions}
-          isSimulationActive={isSimulationActive}
-        />
-        
-        {/* Model Comparison */}
-        <ModelComparison attributions={activeExplainData.attributions} />
+        {activeTab === 'local' ? (
+          <>
+            {/* Full-width SHAP Waterfall */}
+            <ShapWaterfall
+              baseValue={activeExplainData.base_value_kw}
+              predictedValue={activeExplainData.predicted_value_kw}
+              attributions={activeExplainData.attributions}
+              isSimulationActive={isSimulationActive}
+            />
+            
+            {/* Model Comparison */}
+            <ModelComparison attributions={activeExplainData.attributions} />
+          </>
+        ) : (
+          <GlobalShapImportance />
+        )}
       </div>
     </>
   );
