@@ -326,7 +326,7 @@ Built as a team project at **Bhavan's College, Mumbai** (CIA-2, Course Code BH.U
 | Name |
 |---|
 | **Soham Pawar** ([@soham-88](https://github.com/soham-88)) |
-| Suryaprakash Pati |
+| **Suryaprakash Pati** ([@Surya-Pati](https://github.com/Surya-Pati)) |
 | Gaurav Kanojiya |
 | Madhur Kushwaha |
 | Georgina Varghese |
