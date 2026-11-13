@@ -46,6 +46,8 @@ class PredictResponse(BaseModel):
     surge_status: str = Field(..., description="NORMAL | WARNING | CRITICAL")
     recommended_actions: RecommendedActions
     inference_latency_ms: float
+    lower_bound_kw: float = Field(..., description="Empirical 10th percentile load bound (kW)")
+    upper_bound_kw: float = Field(..., description="Empirical 90th percentile load bound (kW)")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -64,6 +66,21 @@ class ExplainResponse(BaseModel):
     base_value_kw: float
     predicted_value_kw: float
     attributions: List[Attribution]
+
+
+class GlobalFeatureImportanceItem(BaseModel):
+    """Global feature importance derived from TreeSHAP."""
+    feature: str
+    mean_abs_shap_kw: float
+    importance_pct: float
+    rank: int
+
+
+class GlobalExplainResponse(BaseModel):
+    """Global TreeSHAP feature importances across baseline distribution."""
+    total_features: int
+    sample_size: int
+    feature_importances: List[GlobalFeatureImportanceItem]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -131,6 +148,27 @@ class BatchSummary(BaseModel):
     peak_timestamp: str
     critical_events_count: int
     avg_mae_vs_actual_kw: Optional[float] = Field(None, description="MAE against actual_kw (which represents the actual load 2 hours ahead)")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  4.6  GET /api/v1/incidents
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class IncidentItem(BaseModel):
+    id: int
+    timestamp: str
+    surge_status: str
+    predicted_load_kw: float
+    capacity_utilization_pct: float
+    tariff_multiplier: float
+    throttled_bays_count: int
+    shed_bays_count: int
+    operator_username: Optional[str] = None
+
+
+class IncidentHistoryResponse(BaseModel):
+    total: int
+    incidents: List[IncidentItem]
 
 
 class BatchPrediction(BaseModel):

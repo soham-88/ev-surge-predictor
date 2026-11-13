@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 import joblib
 import numpy as np
@@ -25,6 +25,7 @@ class MLEngine:
         self._explainer = None
         self._feature_names: List[str] = []
         self._training_metrics: Dict = {}
+        self._global_shap_cache: Dict[str, Any] | None = None
         self._loaded = False
 
     def load(self) -> None:
@@ -49,6 +50,16 @@ class MLEngine:
             self._explainer = shap.TreeExplainer(self._model)
         self._feature_names = joblib.load(SAVED_MODELS_DIR / "feature_names.joblib")
         self._training_metrics = joblib.load(SAVED_MODELS_DIR / "training_metrics.joblib")
+        cal_path = SAVED_MODELS_DIR / "interval_calibration.joblib"
+        if cal_path.exists():
+            self._interval_calibration = joblib.load(cal_path)
+        else:
+            self._interval_calibration = {
+                "q10_kw": -10.922,
+                "q90_kw": 16.583,
+                "coverage": 0.7995,
+                "n_test": 1726,
+            }
         self._loaded = True
 
     # ── Feature Assembly ──────────────────────────────────────
@@ -170,6 +181,24 @@ class MLEngine:
         
         return preds, latency_ms
 
+    def get_prediction_interval(self, predicted_load_kw: float) -> Tuple[float, float]:
+        """Calculate dynamic empirical quantile bounds [lower, upper] for predicted load.
+        
+        lower_bound = max(0.0, predicted + q10)
+        upper_bound = predicted + q90
+        """
+        self.load()
+        q10 = float(self._interval_calibration.get("q10_kw", -10.922))
+        q90 = float(self._interval_calibration.get("q90_kw", 16.583))
+        lower = max(0.0, round(predicted_load_kw + q10, 1))
+        upper = round(predicted_load_kw + q90, 1)
+        return lower, upper
+
+    @property
+    def interval_calibration(self) -> Dict[str, Any]:
+        self.load()
+        return self._interval_calibration
+
     # ── SHAP Explanation ──────────────────────────────────────
 
     def explain(self, scaled_features: np.ndarray) -> Tuple[float, List[dict]]:
@@ -194,6 +223,52 @@ class MLEngine:
         attributions.sort(key=lambda a: abs(a["shap_delta_kw"]), reverse=True)
 
         return base_value, attributions
+
+    def get_global_shap_importance(self) -> Dict[str, Any]:
+        """Compute or return cached global TreeSHAP feature importances across all 15 features."""
+        self.load()
+        if self._global_shap_cache is not None:
+            return self._global_shap_cache
+
+        global_path = SAVED_MODELS_DIR / "global_shap_importance.joblib"
+        if global_path.exists():
+            self._global_shap_cache = joblib.load(global_path)
+            return self._global_shap_cache
+
+        sample_size = 200
+        try:
+            from pipeline.train import synthesize_telemetry, engineer_features, FEATURE_COLUMNS
+            df_synth = synthesize_telemetry(n_days=14, seed=42)
+            df_feat = engineer_features(df_synth).dropna()
+            X_sample = self._scaler.transform(df_feat[FEATURE_COLUMNS].iloc[:sample_size])
+            vals = self._explainer.shap_values(X_sample)
+            mean_abs = np.mean(np.abs(vals), axis=0)
+        except Exception:
+            mean_abs = np.array(self._model.feature_importances_)
+            sample_size = 1
+
+        total = float(np.sum(mean_abs)) if float(np.sum(mean_abs)) > 0 else 1.0
+        items = []
+        for i, fname in enumerate(self._feature_names):
+            val = float(mean_abs[i])
+            pct = round((val / total) * 100.0, 1)
+            items.append({
+                "feature": fname,
+                "mean_abs_shap_kw": round(val, 3),
+                "importance_pct": pct,
+            })
+
+        items.sort(key=lambda x: x["mean_abs_shap_kw"], reverse=True)
+        for rank, item in enumerate(items, start=1):
+            item["rank"] = rank
+
+        result = {
+            "total_features": len(items),
+            "sample_size": sample_size,
+            "feature_importances": items,
+        }
+        self._global_shap_cache = result
+        return result
 
     # ── Training Metrics ──────────────────────────────────────
 

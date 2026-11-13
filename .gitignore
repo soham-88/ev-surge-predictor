@@ -41,6 +41,8 @@ backend/app.db
 *.sqlite3
 *.sqlite
 *.db
+data/
+backend/data/
 
 # Uploads & Scratch
 uploads/
@@ -67,3 +69,5 @@ Icon
 *.sln
 *.swp
 *~
+.agents/
+

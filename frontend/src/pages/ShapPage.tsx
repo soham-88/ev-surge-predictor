@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ShapWaterfall } from '../components/Dashboard/ShapWaterfall';
+import { GlobalShapImportance } from '../components/Dashboard/GlobalShapImportance';
 import { ModelComparison } from '../components/Dashboard/ModelComparison';
 import { useData } from '../context/DataContext';
 import { useTariff } from '../context/TariffContext';
@@ -61,6 +62,7 @@ export function ShapPage() {
   const { user } = useAuth();
   const { isSimulationActive, simulationParams } = useTariff();
 
+  const [activeTab, setActiveTab] = useState<'local' | 'global'>('local');
   const [explainData, setExplainData] = useState<ExplainResponse | null>(contextExplainData);
   const [isLoading, setIsLoading] = useState<boolean>(!contextExplainData);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
@@ -159,12 +161,41 @@ export function ShapPage() {
 
   return (
     <>
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="font-headline-xl text-headline-xl text-text-primary tracking-tight">SHAP Explainability</h1>
-        <p className="font-body-sm text-text-secondary mt-1">
-          Local TreeSHAP feature attributions and benchmark model comparison.
-        </p>
+      {/* View Switcher Header */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="font-headline-xl text-headline-xl text-text-primary tracking-tight">Model Explainability</h1>
+          <p className="font-body-sm text-text-secondary mt-1">TreeSHAP Feature Attributions &amp; Global Physics</p>
+        </div>
+
+        <div className="flex items-center gap-1.5 p-1 bg-surface-container-low border border-border-subtle rounded-xl self-start sm:self-auto" role="tablist" aria-label="Explainability View">
+          <button
+            role="tab"
+            aria-selected={activeTab === 'local'}
+            onClick={() => setActiveTab('local')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
+              activeTab === 'local'
+                ? 'bg-primary text-surface-container-lowest font-bold shadow'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">waterfall_chart</span>
+            Local Attribution (Waterfall)
+          </button>
+          <button
+            role="tab"
+            aria-selected={activeTab === 'global'}
+            onClick={() => setActiveTab('global')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
+              activeTab === 'global'
+                ? 'bg-primary text-surface-container-lowest font-bold shadow'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">bar_chart</span>
+            Global Feature Importance
+          </button>
+        </div>
       </div>
 
       {/* Simulation Active Banner */}
@@ -192,16 +223,22 @@ export function ShapPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-gap-grid auto-rows-min">
-        {/* Full-width SHAP Waterfall */}
-        <ShapWaterfall
-          baseValue={activeExplainData.base_value_kw}
-          predictedValue={activeExplainData.predicted_value_kw}
-          attributions={activeExplainData.attributions}
-          isSimulationActive={isSimulationActive}
-        />
-        
-        {/* Model Comparison */}
-        <ModelComparison attributions={activeExplainData.attributions} />
+        {activeTab === 'local' ? (
+          <>
+            {/* Full-width SHAP Waterfall */}
+            <ShapWaterfall
+              baseValue={activeExplainData.base_value_kw}
+              predictedValue={activeExplainData.predicted_value_kw}
+              attributions={activeExplainData.attributions}
+              isSimulationActive={isSimulationActive}
+            />
+            
+            {/* Model Comparison */}
+            <ModelComparison attributions={activeExplainData.attributions} />
+          </>
+        ) : (
+          <GlobalShapImportance />
+        )}
       </div>
     </>
   );

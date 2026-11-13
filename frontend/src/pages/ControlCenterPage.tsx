@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import { ReportTemplate } from '../components/Dashboard/ReportTemplate';
+import { IncidentHistoryModal } from '../components/Dashboard/IncidentHistoryModal';
 import { Skeleton, SkeletonText, ErrorState } from '../components/ui';
 
 function ControlCenterSkeleton() {
@@ -92,10 +93,14 @@ export function ControlCenterPage() {
     hasError,
     errorMessage,
     retryLoad,
+    activeScenarioId,
+    switchScenario,
+    scenarios,
   } = useData();
   const { user } = useAuth();
   const reportRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
 
   if (isLoading) {
     return <ControlCenterSkeleton />;
@@ -114,9 +119,15 @@ export function ControlCenterPage() {
     );
   }
 
-  const displayCapacityPct =
-    (simulateData.simulated_peak_kw / predictData.transformer_capacity_kw) * 100;
-  const displaySurgeStatus = simulateData.surge_risk;
+  const displayCapacityPct = isSimulationMode
+    ? (simulateData.simulated_peak_kw / predictData.transformer_capacity_kw) * 100
+    : predictData.capacity_utilization_pct;
+  const displaySurgeStatus = isSimulationMode
+    ? simulateData.surge_risk
+    : predictData.surge_status;
+  const displayTariffMultiplier = isSimulationMode
+    ? simulateData.dispatched_mitigations.dynamic_tariff_multiplier
+    : predictData.recommended_actions.dynamic_tariff_multiplier;
 
   const handleGenerateReport = async () => {
     if (!reportRef.current) return;
@@ -175,21 +186,58 @@ export function ControlCenterPage() {
     <>
       {/* Page Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="font-headline-xl text-headline-xl text-text-primary">System Overview</h1>
+        <div>
+          <h1 className="font-headline-xl text-headline-xl text-text-primary">System Overview</h1>
+          <p className="font-body-sm text-text-secondary mt-1">2-Hour Ahead Transformer Load & Surge Mitigation</p>
+        </div>
         
-        <button
-          onClick={handleGenerateReport}
-          disabled={isGenerating}
-          aria-label="Generate PDF diagnostic report"
-          className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          {isGenerating ? (
-            <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin" />
-          ) : (
-            <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
-          )}
-          {isGenerating ? 'GENERATING...' : 'Generate Report'}
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Telemetry Scenario Switcher */}
+          <div className="flex items-center gap-2 bg-surface-container-low border border-border-subtle rounded-lg px-3 py-1.5 shadow-sm">
+            <span className="material-symbols-outlined text-[18px] text-text-secondary">tune</span>
+            <span className="font-label-mono text-xs uppercase text-text-secondary tracking-wider hidden md:inline">Feed:</span>
+            <select
+              value={activeScenarioId}
+              onChange={(e) => switchScenario(e.target.value)}
+              className="bg-transparent text-sm font-medium text-text-primary focus:outline-none cursor-pointer pr-1"
+              title="Switch simulated real-world telemetry scenario"
+              aria-label="Select Telemetry Scenario"
+            >
+              {scenarios.map((scen) => (
+                <option key={scen.id} value={scen.id} className="bg-surface-container text-text-primary">
+                  {scen.name} ({scen.telemetry.active_plugs} bays, {scen.telemetry.ambient_temp_c}°C)
+                </option>
+              ))}
+            </select>
+            <span className="bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-widest font-label-mono leading-none hidden sm:inline">
+              Simulated telemetry
+            </span>
+          </div>
+
+          <button
+            onClick={() => setIsIncidentModalOpen(true)}
+            aria-label="View persistent SQLite incident history"
+            className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+            title="View persistent SQLite incident history"
+          >
+            <span className="material-symbols-outlined text-[18px] text-status-warning">history_toggle_off</span>
+            <span>Incident Log</span>
+          </button>
+
+          <button
+            onClick={handleGenerateReport}
+            disabled={isGenerating}
+            aria-label="Generate PDF diagnostic report"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {isGenerating ? (
+              <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin" />
+            ) : (
+              <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
+            )}
+            {isGenerating ? 'GENERATING...' : 'Generate Report'}
+          </button>
+        </div>
       </div>
 
       {isSimulationMode && (
@@ -220,9 +268,11 @@ export function ControlCenterPage() {
           data={simulateData.timeline}
           capacityPct={displayCapacityPct}
           surgeStatus={displaySurgeStatus}
-          tariffMultiplier={simulateData.dispatched_mitigations.dynamic_tariff_multiplier}
+          tariffMultiplier={displayTariffMultiplier}
           predictedLoadKw={predictData.predicted_load_kw}
           transformerCapacityKw={predictData.transformer_capacity_kw}
+          lowerBoundKw={predictData.lower_bound_kw}
+          upperBoundKw={predictData.upper_bound_kw}
           recommendedActions={predictData.recommended_actions}
           recentEvents={recentEvents}
           isSimulated={isSimulationMode}
@@ -230,6 +280,10 @@ export function ControlCenterPage() {
       </div>
 
       <ReportTemplate ref={reportRef} />
+      <IncidentHistoryModal
+        isOpen={isIncidentModalOpen}
+        onClose={() => setIsIncidentModalOpen(false)}
+      />
     </>
   );
 }

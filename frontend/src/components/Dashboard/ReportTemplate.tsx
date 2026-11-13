@@ -208,6 +208,8 @@ export const ReportTemplate = React.forwardRef<HTMLDivElement>((_, ref) => {
           tariffMultiplier={simulateData.dispatched_mitigations.dynamic_tariff_multiplier}
           predictedLoadKw={predictData.predicted_load_kw}
           transformerCapacityKw={predictData.transformer_capacity_kw}
+          lowerBoundKw={predictData.lower_bound_kw}
+          upperBoundKw={predictData.upper_bound_kw}
           recommendedActions={predictData.recommended_actions}
           recentEvents={recentEvents}
           isSimulated={isSimulationMode}
