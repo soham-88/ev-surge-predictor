@@ -23,6 +23,8 @@ interface Props {
   tariffMultiplier: number;
   predictedLoadKw: number;
   transformerCapacityKw: number;
+  lowerBoundKw?: number;
+  upperBoundKw?: number;
   recommendedActions: {
     throttle_active: boolean;
     per_stall_cap_kw: number;
@@ -39,7 +41,10 @@ export function ForecastTimeline({
   capacityPct,
   surgeStatus,
   tariffMultiplier,
+  predictedLoadKw,
   transformerCapacityKw,
+  lowerBoundKw,
+  upperBoundKw,
   recommendedActions,
   recentEvents,
   isSimulated = false,
@@ -76,8 +81,20 @@ export function ForecastTimeline({
   recentData = recentData.slice(Math.max(0, recentData.length - timeRange - (showForecast ? 2 : 0)));
   const splitIndex = showForecast ? Math.max(0, recentData.length - 2) : -1;
 
-  // 80% Gaussian confidence band: z_0.90 * RMSE = 1.28 * 8.68 = 11.1 kW
-  const CONFIDENCE_DELTA_KW = 11.1;
+  // Empirical 80% quantile interval offsets: residuals q10 = -10.9 kW, q90 = +16.6 kW
+  const q10Offset = lowerBoundKw !== undefined && predictedLoadKw !== undefined
+    ? lowerBoundKw - predictedLoadKw
+    : -10.9;
+  const q90Offset = upperBoundKw !== undefined && predictedLoadKw !== undefined
+    ? upperBoundKw - predictedLoadKw
+    : 16.6;
+
+  const displayLower = lowerBoundKw !== undefined
+    ? lowerBoundKw.toFixed(1)
+    : Math.max(0, predictedLoadKw + q10Offset).toFixed(1);
+  const displayUpper = upperBoundKw !== undefined
+    ? upperBoundKw.toFixed(1)
+    : (predictedLoadKw + q90Offset).toFixed(1);
 
   const chartData = recentData.map((d, i) => {
     let lower_kw: number | null = null;
@@ -86,8 +103,8 @@ export function ForecastTimeline({
 
     if (showForecast && i >= splitIndex) {
       const forecastVal = d.simulated_kw;
-      lower_kw = Math.max(0, Number((forecastVal - CONFIDENCE_DELTA_KW).toFixed(1)));
-      upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + CONFIDENCE_DELTA_KW).toFixed(1)));
+      lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
+      upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
       corridor_range = [lower_kw, upper_kw];
     }
 
@@ -128,6 +145,9 @@ export function ForecastTimeline({
   };
 
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
     const path = document.querySelector('.forecast-line path') as SVGPathElement;
     if (path) {
       const length = path.getTotalLength();
@@ -146,9 +166,14 @@ export function ForecastTimeline({
   return (
     <>
       {/* ═══ Hero Chart Tile (8-col) ═══ */}
-      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-h-100 pb-16`}>
+      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-h-100 pb-16 min-w-0 max-w-full overflow-hidden`}>
         {/* Ambient Glow Background */}
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
+
+        {/* Screen reader summary */}
+        <div className="sr-only">
+          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW, Surge Risk Status: {surgeStatus}.
+        </div>
         
         {/* Header row */}
         <div className="flex justify-between items-start mb-6 z-20 relative">
@@ -176,10 +201,10 @@ export function ForecastTimeline({
                 <span
                   className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary ${showConfidence ? 'opacity-100' : 'opacity-40'}`}
                   onClick={() => setShowConfidence(!showConfidence)}
-                  title={showConfidence ? "Hide 80% Confidence Band" : "Show 80% Confidence Band"}
+                  title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
                 >
                   <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50"></span>
-                  80% Corridor (±11.1 kW)
+                  Empirical 80% interval ({displayLower} – {displayUpper} kW)
                 </span>
               )}
             </div>
@@ -277,7 +302,7 @@ export function ForecastTimeline({
                         </p>
                         {isForecastPoint && item.lower_kw !== null && item.upper_kw !== null && (
                           <p className="text-[11px] font-label-mono text-text-secondary mt-1 border-t border-border-subtle/50 pt-1">
-                            80% Corridor: <span className="text-secondary font-medium">{item.lower_kw} – {item.upper_kw} kW</span>
+                            Empirical 80% interval: <span className="text-secondary font-medium">{item.lower_kw} – {item.upper_kw} kW</span>
                           </p>
                         )}
                       </div>
@@ -391,8 +416,10 @@ export function ForecastTimeline({
         <div className="flex justify-between items-start">
           <h3 className="font-headline-md text-headline-md text-text-primary">Surge Risk & Tariff</h3>
           
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${surgeStatus === 'CRITICAL' ? 'bg-status-critical/10 border-status-critical/30' : surgeStatus === 'WARNING' ? 'bg-status-warning/10 border-status-warning/30' : 'bg-status-normal/10 border-status-normal/30'}`}>
-            <div className={`relative w-2 h-2 rounded-full shadow-[0_0_8px_var(--tw-shadow-color)] animate-pulse-ring ${surgeStatus === 'CRITICAL' ? 'bg-status-critical shadow-status-critical' : surgeStatus === 'WARNING' ? 'bg-status-warning shadow-status-warning' : 'bg-status-normal shadow-status-normal'}`}></div>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${surgeStatus === 'CRITICAL' ? 'bg-status-critical/10 border-status-critical/30' : surgeStatus === 'WARNING' ? 'bg-status-warning/10 border-status-warning/30' : 'bg-status-normal/10 border-status-normal/30'}`}>
+            <span className={`material-symbols-outlined text-[16px] ${surgeStatus === 'CRITICAL' ? 'text-status-critical' : surgeStatus === 'WARNING' ? 'text-status-warning' : 'text-status-normal'}`} aria-hidden="true">
+              {surgeStatus === 'CRITICAL' ? 'error' : surgeStatus === 'WARNING' ? 'warning' : 'check_circle'}
+            </span>
             <span className={`font-label-mono text-label-mono font-bold tracking-widest uppercase ${surgeStatus === 'CRITICAL' ? 'text-status-critical' : surgeStatus === 'WARNING' ? 'text-status-warning' : 'text-status-normal'}`}>
               {surgeStatus}
             </span>

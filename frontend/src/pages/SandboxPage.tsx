@@ -119,18 +119,31 @@ export function SandboxPage() {
 
   return (
     <>
+      {/* Page Header */}
+      <div className="mb-6">
+        <h1 className="font-headline-xl text-headline-xl text-text-primary tracking-tight">Stress Test Sandbox</h1>
+        <p className="font-body-sm text-text-secondary mt-1">
+          Interactive what-if scenario perturbation and autonomous grid mitigation dispatch.
+        </p>
+      </div>
+
       <div className="flex flex-col gap-gap-grid">
         {isSimulationMode && (
-          <div className="bg-status-warning/20 border border-status-warning/50 rounded-lg p-4 flex justify-between items-center shadow-lg">
+          <div
+            role="status"
+            aria-live="polite"
+            className="bg-status-warning/20 border border-status-warning/50 rounded-lg p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-lg"
+          >
             <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-status-warning">warning</span>
+              <span className="material-symbols-outlined text-status-warning" aria-hidden="true">warning</span>
               <span className="font-label-mono text-status-warning font-bold">
                 SIMULATION ACTIVE — showing hypothetical, not live, data
               </span>
             </div>
             <button
               onClick={handleResetToLive}
-              className="px-4 py-1.5 rounded bg-status-warning/20 border border-status-warning text-status-warning font-label-mono font-bold hover:bg-status-warning/30 transition-colors cursor-pointer"
+              aria-label="Reset simulation to live telemetry"
+              className="px-4 py-2 min-h-[40px] rounded bg-status-warning/20 border border-status-warning text-status-warning font-label-mono font-bold hover:bg-status-warning/30 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-status-warning"
             >
               Reset to Live
             </button>

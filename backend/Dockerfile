@@ -1,5 +1,5 @@
 # Production Dockerfile for EV Surge Predictor FastAPI Backend
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # System dependencies for compilation and ML libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -18,6 +18,7 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
 COPY app/ app/
 COPY pipeline/ pipeline/
 COPY saved_models/ saved_models/
+RUN mkdir -p /app/data
 
 # Expose FastAPI port
 EXPOSE 8000

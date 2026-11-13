@@ -89,6 +89,7 @@ async def predict_surge(req: PredictRequest, current_user: User = Depends(get_cu
     )
 
     mitigations = compute_mitigations(predicted_load_kw, req.active_plugs)
+    lower_bound_kw, upper_bound_kw = engine.get_prediction_interval(predicted_load_kw)
 
     _log_incident_if_needed(
         surge_status=mitigations["surge_status"],
@@ -112,4 +113,6 @@ async def predict_surge(req: PredictRequest, current_user: User = Depends(get_cu
             shed_stalls=mitigations["shed_stalls"],
         ),
         inference_latency_ms=round(latency_ms, 1),
+        lower_bound_kw=lower_bound_kw,
+        upper_bound_kw=upper_bound_kw,
     )

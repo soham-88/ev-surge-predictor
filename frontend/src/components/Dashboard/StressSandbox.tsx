@@ -76,12 +76,12 @@ export function StressSandbox({
       </div>
       
       {/* Footer / Action */}
-      <div className="flex justify-between items-center pt-4 border-t border-border-subtle">
-        <div className="font-label-mono text-text-secondary flex gap-2 items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4 border-t border-border-subtle">
+        <div className="font-label-mono text-text-secondary flex flex-wrap gap-2 items-center text-xs">
           {isSimulationMode && (
             <>
               Baseline: <span className="text-text-primary font-bold">{baselineKw.toFixed(1)} kW</span> 
-              <span className="material-symbols-outlined text-sm mx-1">arrow_forward</span> 
+              <span className="material-symbols-outlined text-sm mx-1" aria-hidden="true">arrow_forward</span> 
               Simulated: <span className="text-status-warning font-bold">{simulatedKw.toFixed(1)} kW</span>
             </>
           )}
@@ -89,7 +89,8 @@ export function StressSandbox({
         <button 
           onClick={handleApply}
           disabled={isApplying}
-          className="px-6 py-2 rounded border border-primary/50 text-primary font-label-mono text-label-mono font-bold hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+          aria-label="Apply simulation parameters"
+          className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded border border-primary/50 text-primary font-label-mono text-xs font-bold hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           {isApplying ? (
             <>

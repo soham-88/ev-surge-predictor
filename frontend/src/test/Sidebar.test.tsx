@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { SideNavBar } from '../components/Dashboard/SideNavBar';
@@ -61,5 +61,41 @@ describe('SideNavBar Role-Based Access Control', () => {
     expect(screen.getByText('Vehicle Tariff Lab')).toBeInTheDocument();
     expect(screen.getByText('System Settings')).toBeInTheDocument();
     expect(screen.getByText('System Admin')).toBeInTheDocument();
+  });
+
+  it('renders mobile drawer when isDrawerOpen is true and closes on Escape key', async () => {
+    vi.spyOn(AuthContextModule, 'useAuth').mockReturnValue({
+      isAuthenticated: true,
+      user: { name: 'Operator Alpha', role: 'Operator' },
+      login: vi.fn(),
+      logout: vi.fn(),
+      isLoading: false,
+    });
+
+    const handleClose = vi.fn();
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <SideNavBar isDrawerOpen={true} onCloseDrawer={handleClose} />
+      </MemoryRouter>
+    );
+
+    // Mobile drawer dialog must be visible
+    const drawer = screen.getByRole('dialog', { name: /mobile navigation/i });
+    expect(drawer).toBeInTheDocument();
+
+    // Press Escape
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(handleClose).toHaveBeenCalledTimes(1);
+
+    // When isDrawerOpen is false, dialog is removed from document
+    rerender(
+      <MemoryRouter>
+        <SideNavBar isDrawerOpen={false} onCloseDrawer={handleClose} />
+      </MemoryRouter>
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /mobile navigation/i })).not.toBeInTheDocument();
+    });
   });
 });

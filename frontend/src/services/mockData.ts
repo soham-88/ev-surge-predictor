@@ -12,6 +12,8 @@ export const mockPredictResponse: PredictResponse = {
     shed_stalls: [4, 7],
   },
   inference_latency_ms: 0.48,
+  lower_bound_kw: 213.7,
+  upper_bound_kw: 241.2,
 };
 
 export const mockExplainResponse: ExplainResponse = {

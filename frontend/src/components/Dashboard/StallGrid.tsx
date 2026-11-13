@@ -8,7 +8,7 @@ function AnimePulse({ colorClass }: { colorClass: string }) {
   const ringRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!ringRef.current) return;
+    if (!ringRef.current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const anim = animate(ringRef.current, {
       scale: [1, 2.5],
       opacity: [0.8, 0],
@@ -41,9 +41,9 @@ export function StallGrid({ activePlugs, throttledStalls, shedStalls, perStallCa
   const stalls = Array.from({ length: 8 }, (_, i) => i + 1);
 
   // Compute tallies based on bayStates if available, otherwise fallback
-  const activeCount = bayStates ? Object.values(bayStates).filter(b => b.state === 'ACTIVE').length : Math.max(0, activePlugs - shedStalls.length);
-  const throttledCount = bayStates ? Object.values(bayStates).filter(b => b.state === 'THROTTLED').length : throttledStalls.length;
-  const shedCount = bayStates ? Object.values(bayStates).filter(b => b.state === 'SHED').length : shedStalls.length;
+  const activeCount = bayStates ? Object.values(bayStates).filter(b => b?.state === 'ACTIVE').length : Math.max(0, activePlugs - shedStalls.length);
+  const throttledCount = bayStates ? Object.values(bayStates).filter(b => b?.state === 'THROTTLED').length : throttledStalls.length;
+  const shedCount = bayStates ? Object.values(bayStates).filter(b => b?.state === 'SHED').length : shedStalls.length;
 
   return (
     <section className="flex flex-col gap-4">
@@ -81,7 +81,7 @@ export function StallGrid({ activePlugs, throttledStalls, shedStalls, perStallCa
           let isActive = false;
           let kwDraw = 0;
 
-          if (bayStates) {
+          if (bayStates && bayStates[stallNum]) {
             const bay = bayStates[stallNum];
             isShed = bay.state === 'SHED';
             isThrottled = bay.state === 'THROTTLED';
