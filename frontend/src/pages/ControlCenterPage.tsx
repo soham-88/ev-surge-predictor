@@ -99,6 +99,7 @@ export function ControlCenterPage() {
   } = useData();
   const { user } = useAuth();
   const reportRef = useRef<HTMLDivElement>(null);
+  const incidentLogButtonRef = useRef<HTMLButtonElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
 
@@ -191,15 +192,18 @@ export function ControlCenterPage() {
           <p className="font-body-sm text-text-secondary mt-1">2-Hour Ahead Transformer Load & Surge Mitigation</p>
         </div>
         
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full sm:w-auto">
           {/* Telemetry Scenario Switcher */}
-          <div className="flex items-center gap-2 bg-surface-container-low border border-border-subtle rounded-lg px-3 py-1.5 shadow-sm">
-            <span className="material-symbols-outlined text-[18px] text-text-secondary">tune</span>
-            <span className="font-label-mono text-xs uppercase text-text-secondary tracking-wider hidden md:inline">Feed:</span>
+          <div className="flex items-center gap-2 bg-surface-container-low border border-border-subtle rounded-lg px-2.5 sm:px-3 py-1.5 shadow-sm max-w-full flex-wrap sm:flex-nowrap">
+            <span className="material-symbols-outlined text-[18px] text-text-secondary shrink-0" aria-hidden="true">tune</span>
+            <label htmlFor="feed-scenario-select" className="font-label-mono text-xs uppercase text-text-secondary tracking-wider shrink-0">
+              Feed:
+            </label>
             <select
+              id="feed-scenario-select"
               value={activeScenarioId}
               onChange={(e) => switchScenario(e.target.value)}
-              className="bg-transparent text-sm font-medium text-text-primary focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent text-xs sm:text-sm font-medium text-text-primary focus:outline-none cursor-pointer max-w-[150px] xs:max-w-[200px] sm:max-w-none truncate pr-1"
               title="Switch simulated real-world telemetry scenario"
               aria-label="Select Telemetry Scenario"
             >
@@ -209,18 +213,19 @@ export function ControlCenterPage() {
                 </option>
               ))}
             </select>
-            <span className="bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-widest font-label-mono leading-none hidden sm:inline">
+            <span className="bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] uppercase font-bold tracking-widest font-label-mono leading-none shrink-0">
               Simulated telemetry
             </span>
           </div>
 
           <button
+            ref={incidentLogButtonRef}
             onClick={() => setIsIncidentModalOpen(true)}
             aria-label="View persistent SQLite incident history"
-            className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+            className="flex-1 xs:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-primary whitespace-nowrap"
             title="View persistent SQLite incident history"
           >
-            <span className="material-symbols-outlined text-[18px] text-status-warning">history_toggle_off</span>
+            <span className="material-symbols-outlined text-[18px] text-status-warning" aria-hidden="true">history_toggle_off</span>
             <span>Incident Log</span>
           </button>
 
@@ -228,12 +233,12 @@ export function ControlCenterPage() {
             onClick={handleGenerateReport}
             disabled={isGenerating}
             aria-label="Generate PDF diagnostic report"
-            className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
+            className="flex-1 xs:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary whitespace-nowrap"
           >
             {isGenerating ? (
-              <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin motion-reduce:animate-none" />
             ) : (
-              <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
+              <span className="material-symbols-outlined text-[20px]" aria-hidden="true">picture_as_pdf</span>
             )}
             {isGenerating ? 'GENERATING...' : 'Generate Report'}
           </button>
@@ -283,6 +288,7 @@ export function ControlCenterPage() {
       <IncidentHistoryModal
         isOpen={isIncidentModalOpen}
         onClose={() => setIsIncidentModalOpen(false)}
+        triggerRef={incidentLogButtonRef}
       />
     </>
   );
