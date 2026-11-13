@@ -67,3 +67,7 @@ Icon
 *.sln
 *.swp
 *~
+
+# AI Agent Config & Workspaces
+.agents/
+
