@@ -172,40 +172,44 @@ export function ForecastTimeline({
 
         {/* Screen reader summary */}
         <div className="sr-only">
-          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW, Surge Risk Status: {surgeStatus}.
+          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW with empirical 80% prediction interval [{displayLower} kW to {displayUpper} kW], Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
         </div>
         
         {/* Header row */}
-        <div className="flex justify-between items-start mb-6 z-20 relative">
+        <div className="flex justify-between items-start mb-6 z-20 relative gap-2">
           <div>
             <h3 className="font-headline-md text-headline-md text-text-primary">24-Hour Load Timeline</h3>
-            <div className="font-label-mono text-label-mono text-text-secondary mt-2 flex items-center gap-4 flex-wrap">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--tw-shadow-color)] shadow-primary"></span> 
-                Actual
+            <div className="font-label-mono text-xs text-text-secondary mt-2 flex items-center gap-2 sm:gap-4 flex-wrap">
+              <span className="flex items-center gap-1.5 py-0.5">
+                <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--tw-shadow-color)] shadow-primary shrink-0" aria-hidden="true"></span> 
+                <span>Actual</span>
               </span>
-              <span 
-                className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary ${showForecast ? 'opacity-100' : 'opacity-40 grayscale'}`}
+              <button 
+                type="button"
+                aria-pressed={showForecast}
                 onClick={() => setShowForecast(!showForecast)}
                 title={showForecast ? "Hide Forecast" : "Show Forecast"}
+                className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showForecast ? 'opacity-100 text-text-primary' : 'opacity-40 grayscale text-text-secondary'}`}
               >
-                <span className="w-2 h-2 rounded-full border border-secondary border-dashed"></span> 
-                Forecast (2h)
+                <span className="w-2 h-2 rounded-full border border-secondary border-dashed shrink-0" aria-hidden="true"></span> 
+                <span>Forecast (2h)</span>
                 {isSimulated && (
                   <span className="ml-1 bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-widest leading-none">
                     SIMULATED
                   </span>
                 )}
-              </span>
+              </button>
               {showForecast && (
-                <span
-                  className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary ${showConfidence ? 'opacity-100' : 'opacity-40'}`}
+                <button
+                  type="button"
+                  aria-pressed={showConfidence}
                   onClick={() => setShowConfidence(!showConfidence)}
                   title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
+                  className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
                 >
-                  <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50"></span>
-                  Empirical 80% interval ({displayLower} – {displayUpper} kW)
-                </span>
+                  <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
+                  <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
+                </button>
               )}
             </div>
           </div>
