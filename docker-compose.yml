@@ -10,9 +10,9 @@ services:
       - "8000:8000"
     environment:
       - CORS_ORIGINS=["http://localhost","http://localhost:80","http://localhost:3000","http://localhost:5173"]
-      - DATABASE_URL=sqlite:///./app.db
+      - DATABASE_URL=sqlite:////app/data/app.db
     volumes:
-      - backend_db:/app
+      - backend_data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -39,7 +39,7 @@ services:
       - grid-pulse-net
 
 volumes:
-  backend_db:
+  backend_data:
 
 networks:
   grid-pulse-net:

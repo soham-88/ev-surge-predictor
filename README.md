@@ -58,7 +58,7 @@ Commercial EV charging stations can draw enough power in a short window to overl
 
 ### 1. Control Center
 - 24-hour load timeline with actual load and a 2-hour-ahead forecast
-- **80% Gaussian Forecast Uncertainty Corridor** ($\pm 1.28 \times \text{RMSE} = \pm 11.1\text{ kW}$) overlaid with tooltip bounds
+- **Empirical 80% Prediction Interval** (calibrated test-split residuals $q_{10} = -10.9\text{ kW}, q_{90} = +16.6\text{ kW}$) overlaid with dynamic tooltip bounds
 - **Live Telemetry Scenario Switcher**: Nominal Flow, Evening Commute (Rush Hour), Summer Heatwave Peak (Critical), and Monsoon Lull
 - Capacity utilization gauge against the 250 kW transformer limit
 - Surge risk status with dynamic tariff multipliers (1.00x, 1.25x, 1.50x, 1.80x)

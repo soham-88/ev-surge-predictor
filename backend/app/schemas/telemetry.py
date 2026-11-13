@@ -46,6 +46,8 @@ class PredictResponse(BaseModel):
     surge_status: str = Field(..., description="NORMAL | WARNING | CRITICAL")
     recommended_actions: RecommendedActions
     inference_latency_ms: float
+    lower_bound_kw: float = Field(..., description="Empirical 10th percentile load bound (kW)")
+    upper_bound_kw: float = Field(..., description="Empirical 90th percentile load bound (kW)")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

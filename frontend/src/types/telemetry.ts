@@ -12,6 +12,8 @@ export interface PredictResponse {
   surge_status: 'NORMAL' | 'WARNING' | 'CRITICAL';
   recommended_actions: RecommendedActions;
   inference_latency_ms: number;
+  lower_bound_kw?: number;
+  upper_bound_kw?: number;
 }
 
 export interface Attribution {
