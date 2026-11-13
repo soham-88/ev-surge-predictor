@@ -67,4 +67,5 @@ Icon
 *.sln
 *.swp
 *~
-*.agents/
+.agents/
+
