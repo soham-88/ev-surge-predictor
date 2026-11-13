@@ -26,6 +26,36 @@ export interface ExplainResponse {
   attributions: Attribution[];
 }
 
+export interface GlobalFeatureImportanceItem {
+  feature: string;
+  mean_abs_shap_kw: number;
+  importance_pct: number;
+  rank: number;
+}
+
+export interface GlobalExplainResponse {
+  total_features: number;
+  sample_size: number;
+  feature_importances: GlobalFeatureImportanceItem[];
+}
+
+export interface IncidentItem {
+  id: number;
+  timestamp: string;
+  surge_status: 'WARNING' | 'CRITICAL';
+  predicted_load_kw: number;
+  capacity_utilization_pct: number;
+  tariff_multiplier: number;
+  throttled_bays_count: number;
+  shed_bays_count: number;
+  operator_username?: string | null;
+}
+
+export interface IncidentHistoryResponse {
+  total: number;
+  incidents: IncidentItem[];
+}
+
 export interface TimelinePoint {
   timestamp: string;
   baseline_kw: number;

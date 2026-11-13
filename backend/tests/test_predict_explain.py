@@ -91,3 +91,54 @@ def test_explain_frequency_out_of_range_rejected(
     )
     assert resp.status_code == 422
 
+
+def test_predict_explain_parity(
+    client: TestClient, operator_headers: dict[str, str]
+):
+    """Verify /predict and /explain yield identical forecasts for identical telemetry."""
+    resp_pred = client.post(
+        "/api/v1/predict",
+        json=SAMPLE_TELEMETRY,
+        headers=operator_headers,
+    )
+    assert resp_pred.status_code == 200
+    pred_val = resp_pred.json()["predicted_load_kw"]
+
+    resp_expl = client.post(
+        "/api/v1/explain",
+        json=SAMPLE_TELEMETRY,
+        headers=operator_headers,
+    )
+    assert resp_expl.status_code == 200
+    expl_val = resp_expl.json()["predicted_value_kw"]
+
+    # Round both to 1 decimal place and assert exact match
+    assert round(pred_val, 1) == round(expl_val, 1), (
+        f"Parity mismatch: /predict got {pred_val} kW, but /explain got {expl_val} kW"
+    )
+
+
+def test_explain_global_endpoint(
+    client: TestClient, operator_headers: dict[str, str]
+):
+    """Verify GET /api/v1/explain/global returns 15 ranked features and valid percentages."""
+    resp = client.get("/api/v1/explain/global", headers=operator_headers)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+
+    assert data["total_features"] == 15
+    assert len(data["feature_importances"]) == 15
+    assert data["sample_size"] > 0
+
+    importances = data["feature_importances"]
+    # Check ranks 1 to 15 strictly ascending
+    ranks = [item["rank"] for item in importances]
+    assert ranks == list(range(1, 16))
+
+    # Check non-negative importance and percentage sum ~ 100%
+    pct_sum = sum(item["importance_pct"] for item in importances)
+    assert 98.0 <= pct_sum <= 102.0, f"Expected pct sum ~100%, got {pct_sum}"
+    assert all(item["mean_abs_shap_kw"] >= 0 for item in importances)
+
+
+

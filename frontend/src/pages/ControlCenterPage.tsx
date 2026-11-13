@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import { ReportTemplate } from '../components/Dashboard/ReportTemplate';
+import { IncidentHistoryModal } from '../components/Dashboard/IncidentHistoryModal';
 import { Skeleton, SkeletonText, ErrorState } from '../components/ui';
 
 function ControlCenterSkeleton() {
@@ -94,10 +95,14 @@ export function ControlCenterPage() {
     hasError,
     errorMessage,
     retryLoad,
+    activeScenarioId,
+    switchScenario,
+    scenarios,
   } = useData();
   const { user } = useAuth();
   const reportRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
 
   if (isLoading) {
     return <ControlCenterSkeleton />;
@@ -116,9 +121,15 @@ export function ControlCenterPage() {
     );
   }
 
-  const displayCapacityPct =
-    (simulateData.simulated_peak_kw / predictData.transformer_capacity_kw) * 100;
-  const displaySurgeStatus = simulateData.surge_risk;
+  const displayCapacityPct = isSimulationMode
+    ? (simulateData.simulated_peak_kw / predictData.transformer_capacity_kw) * 100
+    : predictData.capacity_utilization_pct;
+  const displaySurgeStatus = isSimulationMode
+    ? simulateData.surge_risk
+    : predictData.surge_status;
+  const displayTariffMultiplier = isSimulationMode
+    ? simulateData.dispatched_mitigations.dynamic_tariff_multiplier
+    : predictData.recommended_actions.dynamic_tariff_multiplier;
 
   const handleGenerateReport = async () => {
     if (!reportRef.current) return;
@@ -169,21 +180,54 @@ export function ControlCenterPage() {
   return (
     <>
       {/* Page Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="font-headline-xl text-headline-xl text-text-primary">System Overview</h2>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-headline-xl text-headline-xl text-text-primary">System Overview</h2>
+          <p className="font-body-sm text-text-secondary mt-1">2-Hour Ahead Transformer Load & Surge Mitigation</p>
+        </div>
         
-        <button
-          onClick={handleGenerateReport}
-          disabled={isGenerating}
-          className="flex items-center gap-2 px-4 py-2 bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50"
-        >
-          {isGenerating ? (
-            <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin" />
-          ) : (
-            <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
-          )}
-          {isGenerating ? 'GENERATING...' : 'Generate Report'}
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Telemetry Scenario Switcher */}
+          <div className="flex items-center gap-2 bg-surface-container-low border border-border-subtle rounded-lg px-3 py-1.5 shadow-sm">
+            <span className="material-symbols-outlined text-[18px] text-text-secondary">tune</span>
+            <span className="font-label-mono text-xs uppercase text-text-secondary tracking-wider hidden md:inline">Feed:</span>
+            <select
+              value={activeScenarioId}
+              onChange={(e) => switchScenario(e.target.value)}
+              className="bg-transparent text-sm font-medium text-text-primary focus:outline-none cursor-pointer pr-1"
+              title="Switch simulated real-world telemetry scenario"
+              aria-label="Select Telemetry Scenario"
+            >
+              {scenarios.map((scen) => (
+                <option key={scen.id} value={scen.id} className="bg-surface-container text-text-primary">
+                  {scen.name} ({scen.telemetry.active_plugs} bays, {scen.telemetry.ambient_temp_c}°C)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={() => setIsIncidentModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer"
+            title="View persistent SQLite incident history"
+          >
+            <span className="material-symbols-outlined text-[18px] text-status-warning">history_toggle_off</span>
+            <span>Incident Log</span>
+          </button>
+
+          <button
+            onClick={handleGenerateReport}
+            disabled={isGenerating}
+            className="flex items-center gap-2 px-4 py-2 bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin" />
+            ) : (
+              <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
+            )}
+            {isGenerating ? 'GENERATING...' : 'Generate Report'}
+          </button>
+        </div>
       </div>
 
       {isSimulationMode && (
@@ -210,7 +254,7 @@ export function ControlCenterPage() {
           data={simulateData.timeline}
           capacityPct={displayCapacityPct}
           surgeStatus={displaySurgeStatus}
-          tariffMultiplier={simulateData.dispatched_mitigations.dynamic_tariff_multiplier}
+          tariffMultiplier={displayTariffMultiplier}
           predictedLoadKw={predictData.predicted_load_kw}
           transformerCapacityKw={predictData.transformer_capacity_kw}
           recommendedActions={predictData.recommended_actions}
@@ -220,6 +264,10 @@ export function ControlCenterPage() {
       </div>
 
       <ReportTemplate ref={reportRef} />
+      <IncidentHistoryModal
+        isOpen={isIncidentModalOpen}
+        onClose={() => setIsIncidentModalOpen(false)}
+      />
     </>
   );
 }

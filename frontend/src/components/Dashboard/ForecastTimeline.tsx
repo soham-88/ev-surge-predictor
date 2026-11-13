@@ -48,6 +48,7 @@ export function ForecastTimeline({
 }: Props) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showForecast, setShowForecast] = useState(true);
+  const [showConfidence, setShowConfidence] = useState(true);
   const [timeRange, setTimeRange] = useState<6 | 12 | 24>(24);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -75,16 +76,30 @@ export function ForecastTimeline({
   recentData = recentData.slice(Math.max(0, recentData.length - timeRange - (showForecast ? 2 : 0)));
   const splitIndex = showForecast ? Math.max(0, recentData.length - 2) : -1;
 
+  // 80% Gaussian confidence band: z_0.90 * RMSE = 1.28 * 8.68 = 11.1 kW
+  const CONFIDENCE_DELTA_KW = 11.1;
+
   const chartData = recentData.map((d, i) => {
+    let lower_kw: number | null = null;
+    let upper_kw: number | null = null;
+    let corridor_range: [number, number] | null = null;
+
+    if (showForecast && i >= splitIndex) {
+      const forecastVal = d.simulated_kw;
+      lower_kw = Math.max(0, Number((forecastVal - CONFIDENCE_DELTA_KW).toFixed(1)));
+      upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + CONFIDENCE_DELTA_KW).toFixed(1)));
+      corridor_range = [lower_kw, upper_kw];
+    }
+
     if (!showForecast) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null };
+      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
     }
     if (i < splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null };
+      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
     } else if (i === splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw };
+      return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
     } else {
-      return { ...d, historical_kw: null, forecast_kw: d.simulated_kw };
+      return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
     }
   });
 
@@ -139,7 +154,7 @@ export function ForecastTimeline({
         <div className="flex justify-between items-start mb-6 z-20 relative">
           <div>
             <h3 className="font-headline-md text-headline-md text-text-primary">24-Hour Load Timeline</h3>
-            <div className="font-label-mono text-label-mono text-text-secondary mt-2 flex items-center gap-4">
+            <div className="font-label-mono text-label-mono text-text-secondary mt-2 flex items-center gap-4 flex-wrap">
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--tw-shadow-color)] shadow-primary"></span> 
                 Actual
@@ -157,6 +172,16 @@ export function ForecastTimeline({
                   </span>
                 )}
               </span>
+              {showForecast && (
+                <span
+                  className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary ${showConfidence ? 'opacity-100' : 'opacity-40'}`}
+                  onClick={() => setShowConfidence(!showConfidence)}
+                  title={showConfidence ? "Hide 80% Confidence Band" : "Show 80% Confidence Band"}
+                >
+                  <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50"></span>
+                  80% Corridor (±11.1 kW)
+                </span>
+              )}
             </div>
           </div>
           
@@ -237,22 +262,40 @@ export function ForecastTimeline({
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
-                    const activePayload = payload.find(p => p.value !== null);
-                    if (!activePayload) return null;
+                    const item = payload[0]?.payload;
+                    if (!item) return null;
+                    const kwVal = item.forecast_kw ?? item.historical_kw;
+                    const isForecastPoint = item.forecast_kw !== null && item.historical_kw === null;
                     return (
-                      <div className="bg-surface/80 backdrop-blur-xl border border-border p-3 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
-                        <p className="text-text-secondary text-xs mb-1">
+                      <div className="bg-surface/90 backdrop-blur-xl border border-border p-3 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.3)] min-w-[150px]">
+                        <p className="text-text-secondary text-xs mb-1 font-label-mono">
                           {label ? new Date(label as string | number).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {isForecastPoint && <span className="ml-2 text-secondary font-bold">FORECAST</span>}
                         </p>
                         <p className="text-primary font-bold font-label-mono text-lg">
-                          {activePayload.value} kW
+                          {kwVal} kW
                         </p>
+                        {isForecastPoint && item.lower_kw !== null && item.upper_kw !== null && (
+                          <p className="text-[11px] font-label-mono text-text-secondary mt-1 border-t border-border-subtle/50 pt-1">
+                            80% Corridor: <span className="text-secondary font-medium">{item.lower_kw} – {item.upper_kw} kW</span>
+                          </p>
+                        )}
                       </div>
                     );
                   }
                   return null;
                 }}
               />
+              {showForecast && showConfidence && (
+                <Area
+                  type="monotone"
+                  dataKey="corridor_range"
+                  stroke="none"
+                  fill="var(--color-secondary)"
+                  fillOpacity={0.16}
+                  isAnimationActive={false}
+                />
+              )}
               <Area
                 type="monotone"
                 dataKey="historical_kw"

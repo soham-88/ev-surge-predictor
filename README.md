@@ -58,13 +58,16 @@ Commercial EV charging stations can draw enough power in a short window to overl
 
 ### 1. Control Center
 - 24-hour load timeline with actual load and a 2-hour-ahead forecast
+- **80% Gaussian Forecast Uncertainty Corridor** ($\pm 1.28 \times \text{RMSE} = \pm 11.1\text{ kW}$) overlaid with tooltip bounds
+- **Live Telemetry Scenario Switcher**: Nominal Flow, Evening Commute (Rush Hour), Summer Heatwave Peak (Critical), and Monsoon Lull
 - Capacity utilization gauge against the 250 kW transformer limit
-- Surge risk status with a dynamic tariff multiplier
+- Surge risk status with dynamic tariff multipliers (1.00x, 1.25x, 1.50x, 1.80x)
 - Mitigation panel showing throttled bays, or a readiness preview when load is normal
-- Recent surge event log
+- **Persistent SQLite Incident Log** tracking past surge alerts and mitigations
 
 ### 2. SHAP Explainability
-- TreeSHAP waterfall: base value to final prediction, one bar per feature
+- **Local Attribution (Waterfall)**: TreeSHAP waterfall from base value to final prediction, one bar per feature
+- **Global Feature Importance**: Dataset-wide mean absolute SHAP attributions ($E[|\phi_j|]$) ranking all 15 drivers by predictive power
 - Additivity check in the UI: base value + sum of 15 SHAP values = model prediction
 - Auto-generated sentence naming the top contributing drivers
 - XGBoost vs LSTM comparison table (MAE, RMSE, surge recall, latency)
@@ -174,6 +177,18 @@ Detailed public EV charging data for India is not available, so 90 days of 15-mi
 
 ## 💻 Local Setup
 
+### 🐳 Quick Start with Docker (Recommended)
+Run the entire stack (FastAPI backend + Nginx React frontend) with a single command:
+```bash
+docker compose up --build
+```
+- **Frontend**: http://localhost:3000 (or http://localhost:80)
+- **Backend API Docs**: http://localhost:8000/docs
+
+---
+
+### Manual Setup
+
 **Prerequisites:** Python 3.11+, Node.js 18+
 
 ### 1. Clone
@@ -247,10 +262,13 @@ Sample CSV files for testing the **Batch Analysis** page (`POST /api/v1/predict/
 | GET | `/api/v1/auth/me` | Authenticated | Current user and role |
 | POST | `/api/v1/predict` | Authenticated | 2-hour-ahead load prediction and surge risk |
 | POST | `/api/v1/explain` | Authenticated | TreeSHAP feature attributions |
+| GET | `/api/v1/explain/global` | Authenticated | Global TreeSHAP feature importances across 15 drivers |
 | POST | `/api/v1/simulate` | Operator | What-if grid stress simulation |
 | GET | `/api/v1/metrics` | Authenticated | XGBoost and LSTM evaluation metrics |
 | POST | `/api/v1/predict/batch` | Authenticated | Batch CSV prediction |
 | GET | `/api/v1/predict/batch/download/{batch_id}` | Authenticated | Download annotated results CSV |
+| GET | `/api/v1/incidents` | Authenticated | Retrieve persistent SQLite surge incident history |
+| DELETE | `/api/v1/incidents` | Operator | Clear persistent incident history |
 | GET | `/api/v1/tariff/vehicle-options` | Authenticated | Vehicle categories and specs |
 | POST | `/api/v1/tariff/vehicle-adjusted` | Authenticated | Vehicle-adjusted tariff rate |
 | GET | `/api/v1/weather/current` | Authenticated | Live temperature from Open-Meteo |
@@ -263,23 +281,27 @@ Sample CSV files for testing the **Batch Analysis** page (`POST /api/v1/predict/
 
 ```text
 ev-surge-predictor/
+├── docker-compose.yml         # Single-command full-stack container orchestration
 ├── backend/
+│   ├── Dockerfile             # Multi-stage Python 3.11 backend container
 │   ├── app/
 │   │   ├── main.py            # FastAPI entry, CORS, startup seeding
-│   │   ├── api/v1/            # predict, explain, simulate, auth, batch routes
+│   │   ├── api/v1/            # predict, explain, simulate, auth, batch, incidents
 │   │   ├── core/              # config, database, JWT security, weather service
-│   │   ├── models/            # ML inference engine, user model
+│   │   ├── models/            # ML inference engine, user model, incident model
 │   │   ├── routers/           # tariff router
 │   │   ├── schemas/           # Pydantic schemas
 │   │   └── services/          # vehicle tariff logic
-│   ├── pipeline/              # train.py, train_lstm.py, benchmark_models.py
+│   ├── pipeline/              # train.py, train_lstm.py, verify_artifacts.py
 │   └── saved_models/          # trained artifacts and metrics
 ├── frontend/
+│   ├── Dockerfile             # Multi-stage Node 20 builder -> Nginx production
+│   ├── nginx.conf             # Nginx reverse proxy and SPA routing
 │   └── src/
-│       ├── components/        # ForecastTimeline, ShapWaterfall, StressSandbox, StallGrid
+│       ├── components/        # ForecastTimeline, ShapWaterfall, GlobalShap, IncidentModal
 │       ├── context/           # Auth, Data, Tariff contexts
-│       ├── pages/             # ControlCenter, ShapPage, SandboxPage, BatchAnalysis, VehicleTariffLab
-│       ├── services/api.ts    # API client with JWT handling
+│       ├── pages/             # ControlCenter, ShapPage, SandboxPage, BatchAnalysis, TariffLab
+│       ├── services/api.ts    # API client with JWT handling and telemetry scenarios
 │       └── types/             # TypeScript models
 └── docs/                      # screenshots, audit report, specification, sample-data/
 ```
@@ -291,8 +313,8 @@ ev-surge-predictor/
 - [ ] Real-time WebSocket telemetry instead of polling
 - [ ] Walk-forward temporal cross-validation for the LSTM
 - [ ] OCPP 2.0.1 integration for real charger throttling
-- [ ] Docker Compose for one-command setup
-- [ ] Automated tests (pytest, Vitest) and a CI workflow
+- [x] Docker Compose for one-command setup
+- [x] Automated tests (pytest, Vitest) and a CI workflow
 - [ ] Cloud deployment with a public demo link
 
 ---
@@ -304,7 +326,7 @@ Built as a team project at **Bhavan's College, Mumbai** (CIA-2, Course Code BH.U
 | Name |
 |---|
 | **Soham Pawar** ([@soham-88](https://github.com/soham-88)) |
-| Suryaprakash Pati |
+| **Suryaprakash Pati** ([@Surya-Pati](https://github.com/Surya-Pati)) |
 | Gaurav Kanojiya |
 | Madhur Kushwaha |
 | Georgina Varghese |

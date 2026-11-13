@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 import joblib
 import numpy as np
@@ -25,6 +25,7 @@ class MLEngine:
         self._explainer = None
         self._feature_names: List[str] = []
         self._training_metrics: Dict = {}
+        self._global_shap_cache: Dict[str, Any] | None = None
         self._loaded = False
 
     def load(self) -> None:
@@ -194,6 +195,52 @@ class MLEngine:
         attributions.sort(key=lambda a: abs(a["shap_delta_kw"]), reverse=True)
 
         return base_value, attributions
+
+    def get_global_shap_importance(self) -> Dict[str, Any]:
+        """Compute or return cached global TreeSHAP feature importances across all 15 features."""
+        self.load()
+        if self._global_shap_cache is not None:
+            return self._global_shap_cache
+
+        global_path = SAVED_MODELS_DIR / "global_shap_importance.joblib"
+        if global_path.exists():
+            self._global_shap_cache = joblib.load(global_path)
+            return self._global_shap_cache
+
+        sample_size = 200
+        try:
+            from pipeline.train import synthesize_telemetry, engineer_features, FEATURE_COLUMNS
+            df_synth = synthesize_telemetry(n_days=14, seed=42)
+            df_feat = engineer_features(df_synth).dropna()
+            X_sample = self._scaler.transform(df_feat[FEATURE_COLUMNS].iloc[:sample_size])
+            vals = self._explainer.shap_values(X_sample)
+            mean_abs = np.mean(np.abs(vals), axis=0)
+        except Exception:
+            mean_abs = np.array(self._model.feature_importances_)
+            sample_size = 1
+
+        total = float(np.sum(mean_abs)) if float(np.sum(mean_abs)) > 0 else 1.0
+        items = []
+        for i, fname in enumerate(self._feature_names):
+            val = float(mean_abs[i])
+            pct = round((val / total) * 100.0, 1)
+            items.append({
+                "feature": fname,
+                "mean_abs_shap_kw": round(val, 3),
+                "importance_pct": pct,
+            })
+
+        items.sort(key=lambda x: x["mean_abs_shap_kw"], reverse=True)
+        for rank, item in enumerate(items, start=1):
+            item["rank"] = rank
+
+        result = {
+            "total_features": len(items),
+            "sample_size": sample_size,
+            "feature_importances": items,
+        }
+        self._global_shap_cache = result
+        return result
 
     # ── Training Metrics ──────────────────────────────────────
 

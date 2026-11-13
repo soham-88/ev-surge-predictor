@@ -24,6 +24,7 @@ def _seed_demo_accounts() -> None:
     """
     from app.core.database import Base, engine as db_engine, SessionLocal
     from app.models.user import User
+    from app.models.incident import Incident
     from app.core.security import hash_password
     from app.core import config
 

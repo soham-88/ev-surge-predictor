@@ -25,7 +25,8 @@ from app.schemas.telemetry import (
 
 router = APIRouter()
 
-# In-memory cache for CSV downloads. In production, this would be S3/Redis.
+# In-memory cache for CSV downloads with maximum capacity cap (FIFO eviction).
+MAX_BATCH_CACHE_SIZE = 50
 _batch_results_cache: Dict[str, pd.DataFrame] = {}
 
 
@@ -58,6 +59,12 @@ async def predict_batch(file: UploadFile = File(...), current_user: User = Depen
         raise HTTPException(
             status_code=422,
             detail={"message": "Missing required columns", "expected_columns": missing}
+        )
+
+    if df.empty:
+        raise HTTPException(
+            status_code=422,
+            detail="Uploaded CSV contains no data rows."
         )
 
     # Validate grid frequency range (nominal 50 Hz, allowed: 45.0 to 55.0 Hz)
@@ -122,6 +129,9 @@ async def predict_batch(file: UploadFile = File(...), current_user: User = Depen
         )
 
     batch_id = uuid.uuid4().hex
+    if len(_batch_results_cache) >= MAX_BATCH_CACHE_SIZE:
+        oldest_key = next(iter(_batch_results_cache))
+        _batch_results_cache.pop(oldest_key, None)
     _batch_results_cache[batch_id] = df
 
     return BatchPredictResponse(

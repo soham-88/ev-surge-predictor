@@ -75,3 +75,21 @@ def test_batch_legacy_60hz_rejected(
     assert "Grid frequency out of range" in str(detail)
     assert "allowed range: 45.0 to 55.0 Hz" in str(detail)
 
+
+def test_batch_empty_csv_rejected(
+    client: TestClient, operator_headers: dict[str, str]
+):
+    header_only_csv = (
+        b"timestamp,ambient_temp_c,traffic_inflow_index,active_plugs,"
+        b"grid_frequency_hz,load_lag_15m,load_lag_30m,load_lag_45m,load_lag_60m\n"
+    )
+    files = {"file": ("empty_sample.csv", header_only_csv, "text/csv")}
+    resp = client.post(
+        "/api/v1/predict/batch",
+        files=files,
+        headers=operator_headers,
+    )
+    assert resp.status_code == 422
+    assert "Uploaded CSV contains no data rows" in resp.json().get("detail", "")
+
+

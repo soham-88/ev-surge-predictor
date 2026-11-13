@@ -1,4 +1,4 @@
-import type { PredictResponse, ExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse } from '../types/telemetry';
+import type { PredictResponse, ExplainResponse, GlobalExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse, IncidentHistoryResponse } from '../types/telemetry';
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const API_BASE_URL = RAW_API_URL.endsWith('/api/v1')
@@ -18,7 +18,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
       // A quick reload to force the user to login page if token is dead
       window.dispatchEvent(new CustomEvent('auth-unauthorized', { detail: { message: 'Session expired' } }));
     }
-    throw { status: response.status, message: 'Unauthorized' };
+    throw { status: response.status, message: response.status === 401 ? 'Unauthorized' : 'Forbidden' };
   }
   return response;
 }
@@ -74,23 +74,32 @@ export const api = {
     }
   },
 
-  async predict(): Promise<PredictResponse> {
+  async predict(customPayload?: Partial<{
+    timestamp: string;
+    ambient_temp_c: number;
+    traffic_inflow_index: number;
+    active_plugs: number;
+    grid_frequency_hz: number;
+    load_lags_kw: number[] | [number, number, number, number];
+  }>): Promise<PredictResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
     const startTime = performance.now();
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ambient_temp_c: 36.5,
+      traffic_inflow_index: 82,
+      active_plugs: 7,
+      grid_frequency_hz: 49.92,
+      load_lags_kw: [142.0, 158.5, 175.0, 192.0],
+      ...customPayload,
+    };
     try {
       const response = await fetchWithAuth(`${API_BASE_URL}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          ambient_temp_c: 36.5,
-          traffic_inflow_index: 82,
-          active_plugs: 7,
-          grid_frequency_hz: 49.92,
-          load_lags_kw: [142.0, 158.5, 175.0, 192.0],
-        }),
+        body: JSON.stringify(payload),
       });
       clearTimeout(timeoutId);
       const latencyMs = performance.now() - startTime;
@@ -152,6 +161,12 @@ export const api = {
     return await response.json();
   },
 
+  async explainGlobal(): Promise<GlobalExplainResponse> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/explain/global`);
+    if (!response.ok) throw new Error('API Error');
+    return await response.json();
+  },
+
   async simulate(params: { temp_delta_c: number; traffic_surge_pct: number; forced_outage_stalls: number[] }): Promise<SimulateResponse> {
     const response = await fetchWithAuth(`${API_BASE_URL}/simulate`, {
       method: 'POST',
@@ -164,6 +179,22 @@ export const api = {
 
   async metrics(): Promise<MetricsResponse> {
     const response = await fetchWithAuth(`${API_BASE_URL}/metrics`);
+    if (!response.ok) throw new Error('API Error');
+    return await response.json();
+  },
+
+  async getIncidents(limit = 50, surgeStatus?: 'WARNING' | 'CRITICAL'): Promise<IncidentHistoryResponse> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (surgeStatus) query.append('surge_status', surgeStatus);
+    const response = await fetchWithAuth(`${API_BASE_URL}/incidents?${query.toString()}`);
+    if (!response.ok) throw new Error('API Error');
+    return await response.json();
+  },
+
+  async clearIncidents(): Promise<{ message: string; deleted_count: number }> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/incidents`, {
+      method: 'DELETE',
+    });
     if (!response.ok) throw new Error('API Error');
     return await response.json();
   },
