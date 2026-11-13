@@ -103,6 +103,15 @@ def verify_artifacts() -> bool:
     X_test_seq, y_test_seq = create_sequences(X_test_lstm_scaled, y_test_raw, seq_len=seq_len)
     mae_lstm, rmse_lstm, recall_lstm, _ = evaluate_lstm(model_lstm, X_test_seq, y_test_seq, device)
 
+    # 5b. Interval Calibration artifact check
+    interval_cal_path = SAVED_MODELS_DIR / "interval_calibration.joblib"
+    stored_cal = None
+    recalc_coverage = None
+    if interval_cal_path.exists():
+        stored_cal = joblib.load(interval_cal_path)
+        residuals = y_test_raw - y_pred_xgb
+        recalc_coverage = float(((residuals >= stored_cal["q10_kw"]) & (residuals <= stored_cal["q90_kw"])).mean())
+
     # 6. Verification Table
     print("\n[4/4] Comparing re-evaluated metrics with stored metrics ...\n")
     checks = [
@@ -114,6 +123,15 @@ def verify_artifacts() -> bool:
         ("LSTM", "RMSE (kW)", float(stored_lstm["rmse_kw"]), round(rmse_lstm, 2), 0.01),
         ("LSTM", "Surge Recall (%)", float(stored_lstm["surge_recall_pct"]), round(recall_lstm, 1), 0.1),
     ]
+
+    if stored_cal is not None and recalc_coverage is not None:
+        checks.append((
+            "Interval",
+            "Coverage (80% band)",
+            float(stored_cal["coverage"]),
+            round(recalc_coverage, 4),
+            0.01,
+        ))
 
     all_passed = True
     print(f"{'Model':<10s} | {'Metric':<18s} | {'Stored':>10s} | {'Re-evaluated':>14s} | {'Diff':>10s} | {'Status':<6s}")

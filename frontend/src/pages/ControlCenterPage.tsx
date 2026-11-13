@@ -204,6 +204,9 @@ export function ControlCenterPage() {
                 </option>
               ))}
             </select>
+            <span className="bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-widest font-label-mono leading-none hidden sm:inline">
+              Simulated telemetry
+            </span>
           </div>
 
           <button
@@ -257,6 +260,8 @@ export function ControlCenterPage() {
           tariffMultiplier={displayTariffMultiplier}
           predictedLoadKw={predictData.predicted_load_kw}
           transformerCapacityKw={predictData.transformer_capacity_kw}
+          lowerBoundKw={predictData.lower_bound_kw}
+          upperBoundKw={predictData.upper_bound_kw}
           recommendedActions={predictData.recommended_actions}
           recentEvents={recentEvents}
           isSimulated={isSimulationMode}

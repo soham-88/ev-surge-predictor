@@ -64,9 +64,14 @@ export function IncidentHistoryModal({ isOpen, onClose }: Props) {
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-status-warning text-2xl">history_toggle_off</span>
             <div>
-              <h3 className="font-headline-sm text-headline-sm text-text-primary">
-                Grid Surge Incident History
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-headline-sm text-headline-sm text-text-primary">
+                  Grid Surge Incident History
+                </h3>
+                <span className="bg-primary/20 text-primary border border-primary/30 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-widest font-label-mono">
+                  Simulated Telemetry
+                </span>
+              </div>
               <p className="font-body-sm text-text-secondary">
                 Persistent audit log of 250 kW transformer stress &amp; mitigation events
               </p>

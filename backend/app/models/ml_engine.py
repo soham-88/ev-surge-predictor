@@ -50,6 +50,16 @@ class MLEngine:
             self._explainer = shap.TreeExplainer(self._model)
         self._feature_names = joblib.load(SAVED_MODELS_DIR / "feature_names.joblib")
         self._training_metrics = joblib.load(SAVED_MODELS_DIR / "training_metrics.joblib")
+        cal_path = SAVED_MODELS_DIR / "interval_calibration.joblib"
+        if cal_path.exists():
+            self._interval_calibration = joblib.load(cal_path)
+        else:
+            self._interval_calibration = {
+                "q10_kw": -10.922,
+                "q90_kw": 16.583,
+                "coverage": 0.7995,
+                "n_test": 1726,
+            }
         self._loaded = True
 
     # ── Feature Assembly ──────────────────────────────────────
@@ -170,6 +180,24 @@ class MLEngine:
         latency_ms = (time.perf_counter() - t0) * 1000
         
         return preds, latency_ms
+
+    def get_prediction_interval(self, predicted_load_kw: float) -> Tuple[float, float]:
+        """Calculate dynamic empirical quantile bounds [lower, upper] for predicted load.
+        
+        lower_bound = max(0.0, predicted + q10)
+        upper_bound = predicted + q90
+        """
+        self.load()
+        q10 = float(self._interval_calibration.get("q10_kw", -10.922))
+        q90 = float(self._interval_calibration.get("q90_kw", 16.583))
+        lower = max(0.0, round(predicted_load_kw + q10, 1))
+        upper = round(predicted_load_kw + q90, 1)
+        return lower, upper
+
+    @property
+    def interval_calibration(self) -> Dict[str, Any]:
+        self.load()
+        return self._interval_calibration
 
     # ── SHAP Explanation ──────────────────────────────────────
 

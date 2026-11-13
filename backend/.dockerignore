@@ -6,6 +6,10 @@ __pycache__/
 .coverage
 htmlcov/
 app.db
+*.db
+*.sqlite
+*.sqlite3
+data/
 *.log
 .git/
 .agents/
