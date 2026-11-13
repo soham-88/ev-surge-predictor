@@ -191,6 +191,8 @@ export function BatchAnalysis() {
           >
             <input
               ref={fileInputRef}
+              id="batch-file-upload"
+              aria-label="Upload historical telemetry CSV file for batch analysis"
               type="file"
               accept=".csv"
               className="hidden"
@@ -436,12 +438,15 @@ export function BatchAnalysis() {
                       </td>
                       <td className="py-3 font-label-mono text-sm text-primary text-right">{row.predicted_kw.toFixed(1)}</td>
                       <td className="py-3 text-right">
-                        <span className={`px-2 py-1 rounded text-xs font-bold tracking-wide ${
-                          row.surge_status === 'CRITICAL' ? 'bg-status-critical/20 text-status-critical' :
-                          row.surge_status === 'WARNING' ? 'bg-status-warning/20 text-status-warning' :
-                          'bg-status-normal/20 text-status-normal'
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold tracking-wide ${
+                          row.surge_status === 'CRITICAL' ? 'bg-status-critical/20 text-status-critical border border-status-critical/30' :
+                          row.surge_status === 'WARNING' ? 'bg-status-warning/20 text-status-warning border border-status-warning/30' :
+                          'bg-status-normal/20 text-status-normal border border-status-normal/30'
                         }`}>
-                          {row.surge_status}
+                          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
+                            {row.surge_status === 'CRITICAL' ? 'error' : row.surge_status === 'WARNING' ? 'warning' : 'check_circle'}
+                          </span>
+                          <span>{row.surge_status}</span>
                         </span>
                       </td>
                     </tr>
@@ -458,7 +463,8 @@ export function BatchAnalysis() {
                   <button 
                     disabled={page === 1}
                     onClick={() => setPage(p => p - 1)}
-                    className="p-1 rounded hover:bg-surface-variant disabled:opacity-50 transition-colors"
+                    aria-label="Previous page"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded hover:bg-surface-variant disabled:opacity-40 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <span className="material-symbols-outlined text-lg">chevron_left</span>
                   </button>
@@ -466,7 +472,8 @@ export function BatchAnalysis() {
                   <button 
                     disabled={page === totalPages}
                     onClick={() => setPage(p => p + 1)}
-                    className="p-1 rounded hover:bg-surface-variant disabled:opacity-50 transition-colors"
+                    aria-label="Next page"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded hover:bg-surface-variant disabled:opacity-40 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <span className="material-symbols-outlined text-lg">chevron_right</span>
                   </button>

@@ -3,8 +3,6 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { useRef, useState } from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas-pro';
 import { ReportTemplate } from '../components/Dashboard/ReportTemplate';
 import { IncidentHistoryModal } from '../components/Dashboard/IncidentHistoryModal';
 import { Skeleton, SkeletonText, ErrorState } from '../components/ui';
@@ -135,6 +133,13 @@ export function ControlCenterPage() {
     if (!reportRef.current) return;
     setIsGenerating(true);
     try {
+      const [jsPDFModule, html2canvasModule] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas-pro'),
+      ]);
+      const jsPDF = jsPDFModule.default;
+      const html2canvas = html2canvasModule.default;
+
       // The element must be temporarily visible (opacity 1) for html2canvas to capture it 
       // accurately if it relies on SVG animations, though absolute offscreen is usually fine.
       // Wait a moment for Recharts to draw.
@@ -182,7 +187,7 @@ export function ControlCenterPage() {
       {/* Page Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="font-headline-xl text-headline-xl text-text-primary">System Overview</h2>
+          <h1 className="font-headline-xl text-headline-xl text-text-primary">System Overview</h1>
           <p className="font-body-sm text-text-secondary mt-1">2-Hour Ahead Transformer Load & Surge Mitigation</p>
         </div>
         
@@ -211,7 +216,8 @@ export function ControlCenterPage() {
 
           <button
             onClick={() => setIsIncidentModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer"
+            aria-label="View persistent SQLite incident history"
+            className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
             title="View persistent SQLite incident history"
           >
             <span className="material-symbols-outlined text-[18px] text-status-warning">history_toggle_off</span>
@@ -221,7 +227,8 @@ export function ControlCenterPage() {
           <button
             onClick={handleGenerateReport}
             disabled={isGenerating}
-            className="flex items-center gap-2 px-4 py-2 bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50"
+            aria-label="Generate PDF diagnostic report"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
           >
             {isGenerating ? (
               <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin" />
@@ -234,7 +241,11 @@ export function ControlCenterPage() {
       </div>
 
       {isSimulationMode && (
-        <div className="mb-8 p-3 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-between shadow-[0_0_15px_rgba(34,211,238,0.15)]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-8 p-3 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-between shadow-[0_0_15px_rgba(34,211,238,0.15)]"
+        >
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-primary">science</span>
             <span className="font-body-md text-text-primary font-bold tracking-wide">SIMULATION ACTIVE — viewing hypothetical data</span>

@@ -164,14 +164,16 @@ export function ShapPage() {
       {/* View Switcher Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="font-headline-xl text-headline-xl text-text-primary">Model Explainability</h2>
-          <p className="font-body-sm text-text-secondary mt-1">TreeSHAP Feature Attributions & Global Physics</p>
+          <h1 className="font-headline-xl text-headline-xl text-text-primary tracking-tight">Model Explainability</h1>
+          <p className="font-body-sm text-text-secondary mt-1">TreeSHAP Feature Attributions &amp; Global Physics</p>
         </div>
 
-        <div className="flex items-center gap-1.5 p-1 bg-surface-container-low border border-border-subtle rounded-xl self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 p-1 bg-surface-container-low border border-border-subtle rounded-xl self-start sm:self-auto" role="tablist" aria-label="Explainability View">
           <button
+            role="tab"
+            aria-selected={activeTab === 'local'}
             onClick={() => setActiveTab('local')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
               activeTab === 'local'
                 ? 'bg-primary text-surface-container-lowest font-bold shadow'
                 : 'text-text-secondary hover:text-text-primary'
@@ -181,8 +183,10 @@ export function ShapPage() {
             Local Attribution (Waterfall)
           </button>
           <button
+            role="tab"
+            aria-selected={activeTab === 'global'}
             onClick={() => setActiveTab('global')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
               activeTab === 'global'
                 ? 'bg-primary text-surface-container-lowest font-bold shadow'
                 : 'text-text-secondary hover:text-text-primary'
@@ -196,7 +200,11 @@ export function ShapPage() {
 
       {/* Simulation Active Banner */}
       {isSimulationActive && (
-        <div className="mb-6 p-3 rounded-lg bg-status-warning/10 border border-status-warning/30 flex items-center justify-between shadow-[0_0_15px_rgba(245,158,11,0.15)]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-6 p-3 rounded-lg bg-status-warning/10 border border-status-warning/30 flex items-center justify-between shadow-[0_0_15px_rgba(245,158,11,0.15)]"
+        >
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-status-warning">science</span>
             <span className="font-body-md text-text-primary font-bold tracking-wide">
