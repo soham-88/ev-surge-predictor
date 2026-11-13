@@ -229,7 +229,11 @@ export function VehicleTariffLab() {
 
           {/* Simulation vs Live Badge */}
           {isSimulationActive ? (
-            <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-status-warning/10 border border-status-warning/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+            <div
+              role="status"
+              aria-live="polite"
+              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-status-warning/10 border border-status-warning/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+            >
               <div className="relative w-2.5 h-2.5">
                 <div className="absolute inset-0 rounded-full bg-status-warning pulse-throttled opacity-75" />
                 <div className="relative w-full h-full rounded-full bg-status-warning" />

@@ -159,9 +159,21 @@ export function ShapPage() {
 
   return (
     <>
+      {/* Page Header */}
+      <div className="mb-6">
+        <h1 className="font-headline-xl text-headline-xl text-text-primary tracking-tight">SHAP Explainability</h1>
+        <p className="font-body-sm text-text-secondary mt-1">
+          Local TreeSHAP feature attributions and benchmark model comparison.
+        </p>
+      </div>
+
       {/* Simulation Active Banner */}
       {isSimulationActive && (
-        <div className="mb-6 p-3 rounded-lg bg-status-warning/10 border border-status-warning/30 flex items-center justify-between shadow-[0_0_15px_rgba(245,158,11,0.15)]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-6 p-3 rounded-lg bg-status-warning/10 border border-status-warning/30 flex items-center justify-between shadow-[0_0_15px_rgba(245,158,11,0.15)]"
+        >
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-status-warning">science</span>
             <span className="font-body-md text-text-primary font-bold tracking-wide">

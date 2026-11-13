@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { HeaderKPIs } from '../Dashboard/HeaderKPIs';
@@ -7,6 +8,12 @@ import { useData } from '../../context/DataContext';
 export function Layout() {
   const { headerKpis, toasts, dismissToast } = useData();
   const location = useLocation();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // Auto-close mobile drawer when location changes
+  useEffect(() => {
+    setIsDrawerOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="relative min-h-screen flex flex-col overflow-x-hidden selection:bg-primary/30 text-text-primary bg-background">
@@ -21,11 +28,21 @@ export function Layout() {
           isBackendOffline={headerKpis.isOffline}
           isWeatherLive={headerKpis.isWeatherLive}
           isWeatherStale={headerKpis.isWeatherStale}
+          isDrawerOpen={isDrawerOpen}
+          onToggleDrawer={() => setIsDrawerOpen((prev) => !prev)}
         />
 
         <div className="flex flex-1 pt-16">
-          <SideNavBar />
-          <main className="flex-1 lg:ml-64 p-4 md:p-8 overflow-y-auto">
+          <SideNavBar
+            isDrawerOpen={isDrawerOpen}
+            onCloseDrawer={() => setIsDrawerOpen(false)}
+          />
+          <main
+            role="main"
+            id="main-content"
+            tabIndex={-1}
+            className="flex-1 md:ml-64 p-3 sm:p-4 md:p-8 overflow-y-auto max-w-full min-w-0"
+          >
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
@@ -41,8 +58,14 @@ export function Layout() {
         </div>
       </div>
 
-      {/* Global Toasts Container */}
-      <div className="fixed bottom-6 right-4 md:right-8 z-50 flex flex-col gap-3 w-full max-w-sm pointer-events-none">
+      {/* Global Toasts Region */}
+      <div
+        role="region"
+        aria-live="polite"
+        aria-label="System notifications"
+        aria-atomic="true"
+        className="fixed bottom-6 right-4 md:right-8 z-50 flex flex-col gap-3 w-full max-w-sm pointer-events-none"
+      >
         <AnimatePresence>
           {toasts.map(toast => (
             <motion.div
@@ -56,7 +79,7 @@ export function Layout() {
                   : 'bg-status-warning/10 border-status-warning/50'
               }`}
             >
-              <div className={`mt-0.5 material-symbols-outlined ${toast.type === 'CRITICAL' ? 'text-status-critical text-2xl' : 'text-status-warning'}`}>
+              <div className={`mt-0.5 material-symbols-outlined ${toast.type === 'CRITICAL' ? 'text-status-critical text-2xl' : 'text-status-warning'}`} aria-hidden="true">
                 {toast.type === 'CRITICAL' ? 'warning' : 'info'}
               </div>
               <div className="flex-1 flex flex-col">
@@ -71,7 +94,8 @@ export function Layout() {
               </div>
               <button
                 onClick={() => dismissToast(toast.id)}
-                className="text-text-secondary hover:text-text-primary transition-colors mt-0.5"
+                aria-label={`Dismiss notification: ${toast.title}`}
+                className="text-text-secondary hover:text-text-primary transition-colors mt-0.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
               >
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>

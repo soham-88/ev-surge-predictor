@@ -39,6 +39,7 @@ export function ForecastTimeline({
   capacityPct,
   surgeStatus,
   tariffMultiplier,
+  predictedLoadKw,
   transformerCapacityKw,
   recommendedActions,
   recentEvents,
@@ -113,6 +114,9 @@ export function ForecastTimeline({
   };
 
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
     const path = document.querySelector('.forecast-line path') as SVGPathElement;
     if (path) {
       const length = path.getTotalLength();
@@ -131,9 +135,14 @@ export function ForecastTimeline({
   return (
     <>
       {/* ═══ Hero Chart Tile (8-col) ═══ */}
-      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-h-100 pb-16`}>
+      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-h-100 pb-16 min-w-0 max-w-full overflow-hidden`}>
         {/* Ambient Glow Background */}
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
+
+        {/* Screen reader summary */}
+        <div className="sr-only">
+          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW, Surge Risk Status: {surgeStatus}.
+        </div>
         
         {/* Header row */}
         <div className="flex justify-between items-start mb-6 z-20 relative">
@@ -348,8 +357,10 @@ export function ForecastTimeline({
         <div className="flex justify-between items-start">
           <h3 className="font-headline-md text-headline-md text-text-primary">Surge Risk & Tariff</h3>
           
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${surgeStatus === 'CRITICAL' ? 'bg-status-critical/10 border-status-critical/30' : surgeStatus === 'WARNING' ? 'bg-status-warning/10 border-status-warning/30' : 'bg-status-normal/10 border-status-normal/30'}`}>
-            <div className={`relative w-2 h-2 rounded-full shadow-[0_0_8px_var(--tw-shadow-color)] animate-pulse-ring ${surgeStatus === 'CRITICAL' ? 'bg-status-critical shadow-status-critical' : surgeStatus === 'WARNING' ? 'bg-status-warning shadow-status-warning' : 'bg-status-normal shadow-status-normal'}`}></div>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${surgeStatus === 'CRITICAL' ? 'bg-status-critical/10 border-status-critical/30' : surgeStatus === 'WARNING' ? 'bg-status-warning/10 border-status-warning/30' : 'bg-status-normal/10 border-status-normal/30'}`}>
+            <span className={`material-symbols-outlined text-[16px] ${surgeStatus === 'CRITICAL' ? 'text-status-critical' : surgeStatus === 'WARNING' ? 'text-status-warning' : 'text-status-normal'}`} aria-hidden="true">
+              {surgeStatus === 'CRITICAL' ? 'error' : surgeStatus === 'WARNING' ? 'warning' : 'check_circle'}
+            </span>
             <span className={`font-label-mono text-label-mono font-bold tracking-widest uppercase ${surgeStatus === 'CRITICAL' ? 'text-status-critical' : surgeStatus === 'WARNING' ? 'text-status-warning' : 'text-status-normal'}`}>
               {surgeStatus}
             </span>
