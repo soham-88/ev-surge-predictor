@@ -177,13 +177,31 @@ Detailed public EV charging data for India is not available, so 90 days of 15-mi
 
 ## 💻 Local Setup
 
-### 🐳 Quick Start with Docker (Recommended)
-Run the entire stack (FastAPI backend + Nginx React frontend) with a single command:
-```bash
-docker compose up --build
-```
-- **Frontend**: http://localhost:3000 (or http://localhost:80)
-- **Backend API Docs**: http://localhost:8000/docs
+### 🐳 Run with Docker (Recommended)
+
+Run the entire containerized stack (FastAPI backend + Nginx reverse proxy & React frontend) with persistent SQLite storage:
+
+**Prerequisites:** Docker Engine 24+ & Docker Compose v2+ installed and running.
+
+1. **Start the stack:**
+   ```bash
+   docker compose up --build
+   ```
+2. **Access URLs:**
+   - **Frontend Dashboard**: [http://localhost](http://localhost) (or [http://localhost:3000](http://localhost:3000))
+   - **Backend Healthcheck**: [http://localhost/health](http://localhost/health) (or [http://localhost:8000/health](http://localhost:8000/health))
+   - **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)
+3. **Demo accounts:**
+   - **Operator**: `operator` / `operatorpassword123` (Full access, Sandbox simulation, incident audit logs)
+   - **Viewer**: `viewer` / `viewerpassword123` (Read-only)
+4. **Stop and reset:**
+   ```bash
+   # Stop containers while preserving the SQLite database volume
+   docker compose down
+
+   # Stop containers and reset the database volume (resets incident logs and users)
+   docker compose down -v
+   ```
 
 ---
 
