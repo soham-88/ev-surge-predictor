@@ -72,7 +72,7 @@ function VehicleTariffSkeleton() {
       {Array.from({ length: 3 }).map((_, idx) => (
         <div
           key={idx}
-          className="rounded-2xl p-6 backdrop-blur-xl bg-surface-container-lowest/60 border border-border-subtle/50 flex flex-col justify-between min-h-[380px]"
+          className="rounded-2xl p-6 backdrop-blur-xl bg-surface-container-lowest/60 border border-border-subtle/50 flex flex-col justify-between"
         >
           <div>
             <div className="flex items-center justify-between mb-4">

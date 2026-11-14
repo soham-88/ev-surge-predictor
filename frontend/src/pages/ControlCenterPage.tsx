@@ -41,7 +41,7 @@ function ControlCenterSkeleton() {
         {/* 4-col Side Cards (Transformer Gauge, Surge Risk, Mitigation) */}
         <div className="md:col-span-4 flex flex-col gap-gap-grid">
           {/* Tile 1: Gauge */}
-          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col items-center justify-center min-h-[220px]">
+          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col items-center justify-center">
             <div className="flex justify-between w-full mb-4">
               <SkeletonText className="w-36 h-5" />
               <Skeleton className="w-14 h-5 rounded-full" />
@@ -51,7 +51,7 @@ function ControlCenterSkeleton() {
           </div>
 
           {/* Tile 2: Surge Risk */}
-          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col justify-between min-h-[200px]">
+          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <SkeletonText className="w-36 h-5" />
               <Skeleton className="w-20 h-6 rounded-full" />
@@ -64,7 +64,7 @@ function ControlCenterSkeleton() {
           </div>
 
           {/* Tile 3: Mitigations */}
-          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col justify-between min-h-[200px]">
+          <div className="rounded-2xl bg-surface-container-lowest/60 border border-border-subtle/50 p-6 flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <SkeletonText className="w-40 h-5" />
               <Skeleton className="w-16 h-6 rounded-full" />

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { StallGrid } from '../components/Dashboard/StallGrid';
-import { ShapWaterfall } from '../components/Dashboard/ShapWaterfall';
+import { ShapWaterfall, computeWaterfallDomain } from '../components/Dashboard/ShapWaterfall';
 import { getFeatureReadableName } from '../types/telemetry';
 
 // Mock animejs for StallGrid's pulse animation
@@ -110,6 +110,60 @@ describe('Dashboard Visual Components', () => {
       for (const name of expectedReadableNames) {
         expect(screen.getByText(name)).toBeInTheDocument();
       }
+    });
+
+    describe('computeWaterfallDomain helper', () => {
+      it('calculates a tight domain with ~8% padding rounded to nice tick values (multiples of 5)', () => {
+        const base = 70;
+        const attributions = [
+          { feature: 'f1', shap_delta_kw: 25 },  // cumulative: 95
+          { feature: 'f2', shap_delta_kw: -10 }, // cumulative: 85
+          { feature: 'f3', shap_delta_kw: 30 },  // cumulative: 115
+        ];
+        const prediction = 115;
+
+        const [minDomain, maxDomain] = computeWaterfallDomain(base, attributions, prediction);
+
+        // Sorted order by absolute attribution: f3 (+30), f1 (+25), f2 (-10).
+        // Cumulative steps: 70 -> 100 -> 125 -> 115.
+        // Raw values range from 70 to 125 (span = 55 kW).
+        // 8% padding of 55 is 4.4 kW.
+        // Padded range: 65.6 to 129.4 kW.
+        // Rounded to multiples of 5: floor(65.6/5)*5 = 65, ceil(129.4/5)*5 = 130.
+        expect(minDomain).toBe(65);
+        expect(maxDomain).toBe(130);
+        expect(minDomain % 5).toBe(0);
+        expect(maxDomain % 5).toBe(0);
+        expect(minDomain).toBeLessThanOrEqual(70);
+        expect(maxDomain).toBeGreaterThanOrEqual(115);
+      });
+
+      it('correctly encompasses negative cumulative dips', () => {
+        const base = 100;
+        const attributions = [
+          { feature: 'f1', shap_delta_kw: -40 }, // cumulative: 60
+          { feature: 'f2', shap_delta_kw: 10 },  // cumulative: 70
+        ];
+        const prediction = 70;
+
+        const [minDomain, maxDomain] = computeWaterfallDomain(base, attributions, prediction);
+
+        // Values span from 60 to 100 (span = 40 kW).
+        // Padded: min <= 60, max >= 100.
+        expect(minDomain).toBeLessThanOrEqual(60);
+        expect(maxDomain).toBeGreaterThanOrEqual(100);
+        expect(minDomain % 5).toBe(0);
+        expect(maxDomain % 5).toBe(0);
+      });
+
+      it('handles empty attributions safely', () => {
+        const [minDomain, maxDomain] = computeWaterfallDomain(80, [], 80);
+        expect(minDomain).toBeLessThan(80);
+        expect(maxDomain).toBeGreaterThan(80);
+        expect(maxDomain).toBeGreaterThan(minDomain);
+        expect(minDomain % 5).toBe(0);
+        expect(maxDomain % 5).toBe(0);
+      });
     });
   });
 });
