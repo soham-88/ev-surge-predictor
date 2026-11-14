@@ -11,7 +11,7 @@ services:
     environment:
       - CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:3000,http://localhost:5173
       - DATABASE_URL=sqlite:////app/data/app.db
-      - JWT_SECRET=${JWT_SECRET:-ev_surge_production_jwt_secret_grid_pulse_2026}
+      - JWT_SECRET=${JWT_SECRET:-dev-only-insecure-change-me}
       - DEMO_OPERATOR_PASSWORD=${DEMO_OPERATOR_PASSWORD:-operatorpassword123}
       - DEMO_VIEWER_PASSWORD=${DEMO_VIEWER_PASSWORD:-viewerpassword123}
     volumes:
