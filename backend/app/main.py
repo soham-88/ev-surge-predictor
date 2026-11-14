@@ -57,6 +57,9 @@ def _seed_demo_accounts() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: load ML artifacts and ensure demo accounts exist."""
+    from app.core import config
+    config.check_jwt_secret_warning()
+
     print("Loading ML model artifacts ...")
     engine.load()
     print("ML engine ready.")

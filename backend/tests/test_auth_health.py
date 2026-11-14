@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+import pytest
 from fastapi.testclient import TestClient
+
+from app.core import config
 
 
 def test_health(client: TestClient):
@@ -78,3 +82,25 @@ def test_simulate_role_access(
     assert "baseline_peak_kw" in data
     assert "surge_risk" in data
     assert "dispatched_mitigations" in data
+
+
+def test_jwt_secret_default_warning_emitted(caplog: pytest.LogCaptureFixture):
+    # Test new default warning
+    with caplog.at_level(logging.WARNING):
+        warned = config.check_jwt_secret_warning("dev-only-insecure-change-me")
+        assert warned is True
+        assert any("JWT_SECRET is set to a development default" in r.message for r in caplog.records)
+
+    # Test old default string warning
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        warned_old = config.check_jwt_secret_warning("ev_surge_production_jwt_secret_grid_pulse_2026")
+        assert warned_old is True
+        assert any("JWT_SECRET is set to a development default" in r.message for r in caplog.records)
+
+    # Test non-default secure secret produces no warning
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        safe = config.check_jwt_secret_warning("custom_production_secret_32_characters_long")
+        assert safe is False
+        assert not any("development default" in r.message for r in caplog.records)

@@ -194,6 +194,9 @@ Run the entire containerized stack (FastAPI backend + Nginx reverse proxy & Reac
 3. **Demo accounts:**
    - **Operator**: `operator` / `operatorpassword123` (Full access, Sandbox simulation, incident audit logs)
    - **Viewer**: `viewer` / `viewerpassword123` (Read-only)
+
+> **Security Note:** `docker-compose.yml` defaults `JWT_SECRET` to `"dev-only-insecure-change-me"`; for production deployments, always set a strong custom key via the `JWT_SECRET` environment variable.
+
 4. **Stop and reset:**
    ```bash
    # Stop containers while preserving the SQLite database volume
