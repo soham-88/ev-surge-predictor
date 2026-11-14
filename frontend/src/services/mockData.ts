@@ -11,7 +11,9 @@ export const mockPredictResponse: PredictResponse = {
     per_stall_cap_kw: 60.0,
     shed_stalls: [4, 7],
   },
-  inference_latency_ms: 4.1,
+  inference_latency_ms: 0.48,
+  lower_bound_kw: 213.7,
+  upper_bound_kw: 241.2,
 };
 
 export const mockExplainResponse: ExplainResponse = {
@@ -21,7 +23,7 @@ export const mockExplainResponse: ExplainResponse = {
     { feature: 'ambient_temp_c', value: 36.5, shap_delta_kw: 42.1 },
     { feature: 'traffic_inflow_index', value: 82, shap_delta_kw: 31.5 },
     { feature: 'load_lag_15m', value: 192.0, shap_delta_kw: 24.2 },
-    { feature: 'grid_frequency_hz', value: 59.92, shap_delta_kw: 6.8 },
+    { feature: 'grid_frequency_hz', value: 49.92, shap_delta_kw: 6.8 },
   ],
 };
 

@@ -2,6 +2,8 @@ EV Charging Station Smart Load & Surge Predictor
 
 Intelligent Grid Operations, Predictive Load Forecasting & Autonomous Throttling Platform
 
+> **Note:** Metrics shown are from the final trained models; the initial design targets were different.
+
 1. Executive Summary & Product Specification (PRD)
 1.1 Problem Statement
 
@@ -152,7 +154,7 @@ Where:
 * $X_{t-\Delta t}$ — Historical station load lags ($t-15\text{m}$, $t-30\text{m}$, $t-45\text{m}$, $t-60\text{m}$)
 * $W_t$ — Environmental weather telemetry (ambient temperature in $^\circ\text{C}$, humidity)
 * $T_t$ — Local traffic inflow index ($0 - 100$) and corridor vehicle density
-* $G_t$ — Baseline electrical grid stability metrics (grid frequency in Hz, nominal 60.0 Hz)
+* $G_t$ — Baseline electrical grid stability metrics (grid frequency in Hz, nominal 50.0 Hz)
 
 3.2 Feature Pipeline
 
@@ -178,10 +180,10 @@ $$\text{Day}_{\sin} = \sin\left(\frac{2\pi \cdot \text{day}}{7}\right), \quad \t
 | :--- | :--- | :--- |
 | **Model Architecture** | Gradient Boosted Decision Trees | 2-Layer LSTM (64 hidden units) + Dense |
 | **Target Function** | Regressor (RMSE Loss) | Sequential MSE Loss |
-| **Inference Latency** | ~4.2 ms | ~28.5 ms |
-| **Mean Absolute Error (MAE)** | 6.42 kW | 7.85 kW |
-| **Root Mean Squared Error (RMSE)** | 9.15 kW | 11.20 kW |
-| **Surge Recall (> 85% Capacity)** | 97.8% | 93.1% |
+| **Inference Latency** | ~0.45 ms | ~0.56 ms |
+| **Mean Absolute Error (MAE)** | 8.81 kW | 8.64 kW |
+| **Root Mean Squared Error (RMSE)** | 11.11 kW | 10.88 kW |
+| **Surge Recall (> 80% Capacity)** | 91.5% | 89.8% |
 | **Explainability Engine** | Exact Shapley Values (TreeSHAP) | Integrated Gradients |
 4. REST API & Data Contracts Specification
 4.1 POST /api/v1/predict
@@ -196,7 +198,7 @@ json
   "ambient_temp_c": 36.5,
   "traffic_inflow_index": 82,
   "active_plugs": 7,
-  "grid_frequency_hz": 59.92,
+  "grid_frequency_hz": 49.92,
   "load_lags_kw": [142.0, 158.5, 175.0, 192.0]
 }
 
@@ -214,7 +216,7 @@ json
     "per_stall_cap_kw": 60.0,
     "shed_stalls": [4, 7]
   },
-  "inference_latency_ms": 4.1
+  "inference_latency_ms": 0.48
 }
 4.2 POST /api/v1/explain
 
@@ -230,7 +232,7 @@ json
     { "feature": "ambient_temp_c", "value": 36.5, "shap_delta_kw": 42.1 },
     { "feature": "traffic_inflow_index", "value": 82, "shap_delta_kw": 31.5 },
     { "feature": "load_lag_15m", "value": 192.0, "shap_delta_kw": 24.2 },
-    { "feature": "grid_frequency_hz", "value": 59.92, "shap_delta_kw": 6.8 }
+    { "feature": "grid_frequency_hz", "value": 49.92, "shap_delta_kw": 6.8 }
   ]
 }
 4.3 POST /api/v1/simulate
@@ -276,17 +278,17 @@ json
   "models": [
     {
       "name": "XGBoost Regressor (Primary)",
-      "mae_kw": 6.42,
-      "rmse_kw": 9.15,
-      "surge_recall_pct": 97.8,
-      "latency_ms": 4.2
+      "mae_kw": 8.81,
+      "rmse_kw": 11.11,
+      "surge_recall_pct": 91.5,
+      "latency_ms": 0.45
     },
     {
       "name": "PyTorch LSTM Sequence (Benchmark)",
-      "mae_kw": 7.85,
-      "rmse_kw": 11.20,
-      "surge_recall_pct": 93.1,
-      "latency_ms": 28.5
+      "mae_kw": 8.64,
+      "rmse_kw": 10.88,
+      "surge_recall_pct": 89.8,
+      "latency_ms": 0.56
     }
   ]
 }
@@ -297,8 +299,8 @@ Accepts a CSV of historical telemetry rows and runs the model across all of them
 Request: multipart/form-data, field name file, a CSV with columns matching the live telemetry schema, plus an optional actual_kw column (which must represent the target load 2 hours ahead, i.e., at t+2h):
 
 timestamp,ambient_temp_c,traffic_inflow_index,active_plugs,grid_frequency_hz,load_lag_15m,load_lag_30m,load_lag_45m,load_lag_60m,actual_kw
-2026-08-19T14:00:00Z,36.5,82,7,59.92,142.0,158.5,170.0,175.0,175.0
-2026-08-19T14:15:00Z,36.8,79,7,59.91,148.0,142.0,158.5,170.0,236.0
+2026-08-19T14:00:00Z,36.5,82,7,49.92,142.0,158.5,170.0,175.0,175.0
+2026-08-19T14:15:00Z,36.8,79,7,49.91,148.0,142.0,158.5,170.0,236.0
 ...
 
 Response (200 OK):

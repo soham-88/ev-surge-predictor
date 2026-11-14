@@ -23,6 +23,8 @@ interface Props {
   tariffMultiplier: number;
   predictedLoadKw: number;
   transformerCapacityKw: number;
+  lowerBoundKw?: number;
+  upperBoundKw?: number;
   recommendedActions: {
     throttle_active: boolean;
     per_stall_cap_kw: number;
@@ -39,7 +41,10 @@ export function ForecastTimeline({
   capacityPct,
   surgeStatus,
   tariffMultiplier,
+  predictedLoadKw,
   transformerCapacityKw,
+  lowerBoundKw,
+  upperBoundKw,
   recommendedActions,
   recentEvents,
   isSimulated = false,
@@ -48,6 +53,7 @@ export function ForecastTimeline({
 }: Props) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showForecast, setShowForecast] = useState(true);
+  const [showConfidence, setShowConfidence] = useState(true);
   const [timeRange, setTimeRange] = useState<6 | 12 | 24>(24);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -75,16 +81,42 @@ export function ForecastTimeline({
   recentData = recentData.slice(Math.max(0, recentData.length - timeRange - (showForecast ? 2 : 0)));
   const splitIndex = showForecast ? Math.max(0, recentData.length - 2) : -1;
 
+  // Empirical 80% quantile interval offsets: residuals q10 = -10.9 kW, q90 = +16.6 kW
+  const q10Offset = lowerBoundKw !== undefined && predictedLoadKw !== undefined
+    ? lowerBoundKw - predictedLoadKw
+    : -10.9;
+  const q90Offset = upperBoundKw !== undefined && predictedLoadKw !== undefined
+    ? upperBoundKw - predictedLoadKw
+    : 16.6;
+
+  const displayLower = lowerBoundKw !== undefined
+    ? lowerBoundKw.toFixed(1)
+    : Math.max(0, predictedLoadKw + q10Offset).toFixed(1);
+  const displayUpper = upperBoundKw !== undefined
+    ? upperBoundKw.toFixed(1)
+    : (predictedLoadKw + q90Offset).toFixed(1);
+
   const chartData = recentData.map((d, i) => {
+    let lower_kw: number | null = null;
+    let upper_kw: number | null = null;
+    let corridor_range: [number, number] | null = null;
+
+    if (showForecast && i >= splitIndex) {
+      const forecastVal = d.simulated_kw;
+      lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
+      upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
+      corridor_range = [lower_kw, upper_kw];
+    }
+
     if (!showForecast) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null };
+      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
     }
     if (i < splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null };
+      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
     } else if (i === splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw };
+      return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
     } else {
-      return { ...d, historical_kw: null, forecast_kw: d.simulated_kw };
+      return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
     }
   });
 
@@ -113,6 +145,9 @@ export function ForecastTimeline({
   };
 
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
     const path = document.querySelector('.forecast-line path') as SVGPathElement;
     if (path) {
       const length = path.getTotalLength();
@@ -131,32 +166,51 @@ export function ForecastTimeline({
   return (
     <>
       {/* ═══ Hero Chart Tile (8-col) ═══ */}
-      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-h-100 pb-16`}>
+      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-h-100 pb-16 min-w-0 max-w-full overflow-hidden`}>
         {/* Ambient Glow Background */}
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
+
+        {/* Screen reader summary */}
+        <div className="sr-only">
+          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW with empirical 80% prediction interval [{displayLower} kW to {displayUpper} kW], Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
+        </div>
         
         {/* Header row */}
-        <div className="flex justify-between items-start mb-6 z-20 relative">
+        <div className="flex justify-between items-start mb-6 z-20 relative gap-2">
           <div>
             <h3 className="font-headline-md text-headline-md text-text-primary">24-Hour Load Timeline</h3>
-            <div className="font-label-mono text-label-mono text-text-secondary mt-2 flex items-center gap-4">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--tw-shadow-color)] shadow-primary"></span> 
-                Actual
+            <div className="font-label-mono text-xs text-text-secondary mt-2 flex items-center gap-2 sm:gap-4 flex-wrap">
+              <span className="flex items-center gap-1.5 py-0.5">
+                <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--tw-shadow-color)] shadow-primary shrink-0" aria-hidden="true"></span> 
+                <span>Actual</span>
               </span>
-              <span 
-                className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary ${showForecast ? 'opacity-100' : 'opacity-40 grayscale'}`}
+              <button 
+                type="button"
+                aria-pressed={showForecast}
                 onClick={() => setShowForecast(!showForecast)}
                 title={showForecast ? "Hide Forecast" : "Show Forecast"}
+                className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showForecast ? 'opacity-100 text-text-primary' : 'opacity-40 grayscale text-text-secondary'}`}
               >
-                <span className="w-2 h-2 rounded-full border border-secondary border-dashed"></span> 
-                Forecast (2h)
+                <span className="w-2 h-2 rounded-full border border-secondary border-dashed shrink-0" aria-hidden="true"></span> 
+                <span>Forecast (2h)</span>
                 {isSimulated && (
                   <span className="ml-1 bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-widest leading-none">
                     SIMULATED
                   </span>
                 )}
-              </span>
+              </button>
+              {showForecast && (
+                <button
+                  type="button"
+                  aria-pressed={showConfidence}
+                  onClick={() => setShowConfidence(!showConfidence)}
+                  title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
+                  className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
+                >
+                  <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
+                  <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
+                </button>
+              )}
             </div>
           </div>
           
@@ -237,22 +291,40 @@ export function ForecastTimeline({
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
-                    const activePayload = payload.find(p => p.value !== null);
-                    if (!activePayload) return null;
+                    const item = payload[0]?.payload;
+                    if (!item) return null;
+                    const kwVal = item.forecast_kw ?? item.historical_kw;
+                    const isForecastPoint = item.forecast_kw !== null && item.historical_kw === null;
                     return (
-                      <div className="bg-surface/80 backdrop-blur-xl border border-border p-3 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
-                        <p className="text-text-secondary text-xs mb-1">
+                      <div className="bg-surface/90 backdrop-blur-xl border border-border p-3 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.3)] min-w-[150px]">
+                        <p className="text-text-secondary text-xs mb-1 font-label-mono">
                           {label ? new Date(label as string | number).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {isForecastPoint && <span className="ml-2 text-secondary font-bold">FORECAST</span>}
                         </p>
                         <p className="text-primary font-bold font-label-mono text-lg">
-                          {activePayload.value} kW
+                          {kwVal} kW
                         </p>
+                        {isForecastPoint && item.lower_kw !== null && item.upper_kw !== null && (
+                          <p className="text-[11px] font-label-mono text-text-secondary mt-1 border-t border-border-subtle/50 pt-1">
+                            Empirical 80% interval: <span className="text-secondary font-medium">{item.lower_kw} – {item.upper_kw} kW</span>
+                          </p>
+                        )}
                       </div>
                     );
                   }
                   return null;
                 }}
               />
+              {showForecast && showConfidence && (
+                <Area
+                  type="monotone"
+                  dataKey="corridor_range"
+                  stroke="none"
+                  fill="var(--color-secondary)"
+                  fillOpacity={0.16}
+                  isAnimationActive={false}
+                />
+              )}
               <Area
                 type="monotone"
                 dataKey="historical_kw"
@@ -348,8 +420,10 @@ export function ForecastTimeline({
         <div className="flex justify-between items-start">
           <h3 className="font-headline-md text-headline-md text-text-primary">Surge Risk & Tariff</h3>
           
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${surgeStatus === 'CRITICAL' ? 'bg-status-critical/10 border-status-critical/30' : surgeStatus === 'WARNING' ? 'bg-status-warning/10 border-status-warning/30' : 'bg-status-normal/10 border-status-normal/30'}`}>
-            <div className={`relative w-2 h-2 rounded-full shadow-[0_0_8px_var(--tw-shadow-color)] animate-pulse-ring ${surgeStatus === 'CRITICAL' ? 'bg-status-critical shadow-status-critical' : surgeStatus === 'WARNING' ? 'bg-status-warning shadow-status-warning' : 'bg-status-normal shadow-status-normal'}`}></div>
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${surgeStatus === 'CRITICAL' ? 'bg-status-critical/10 border-status-critical/30' : surgeStatus === 'WARNING' ? 'bg-status-warning/10 border-status-warning/30' : 'bg-status-normal/10 border-status-normal/30'}`}>
+            <span className={`material-symbols-outlined text-[16px] ${surgeStatus === 'CRITICAL' ? 'text-status-critical' : surgeStatus === 'WARNING' ? 'text-status-warning' : 'text-status-normal'}`} aria-hidden="true">
+              {surgeStatus === 'CRITICAL' ? 'error' : surgeStatus === 'WARNING' ? 'warning' : 'check_circle'}
+            </span>
             <span className={`font-label-mono text-label-mono font-bold tracking-widest uppercase ${surgeStatus === 'CRITICAL' ? 'text-status-critical' : surgeStatus === 'WARNING' ? 'text-status-warning' : 'text-status-normal'}`}>
               {surgeStatus}
             </span>

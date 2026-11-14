@@ -14,6 +14,8 @@ from app.schemas.telemetry import (
     Attribution,
     ExplainResponse,
     PredictRequest,
+    GlobalFeatureImportanceItem,
+    GlobalExplainResponse,
 )
 
 router = APIRouter()
@@ -39,8 +41,8 @@ async def explain_prediction(req: PredictRequest, current_user: User = Depends(g
     base_value, attributions = engine.explain(scaled_features)
 
     return ExplainResponse(
-        base_value_kw=round(base_value, 1),
-        predicted_value_kw=round(predicted_load_kw, 1),
+        base_value_kw=round(base_value, 4),
+        predicted_value_kw=round(predicted_load_kw, 4),
         attributions=[
             Attribution(
                 feature=a["feature"],
@@ -48,5 +50,24 @@ async def explain_prediction(req: PredictRequest, current_user: User = Depends(g
                 shap_delta_kw=a["shap_delta_kw"],
             )
             for a in attributions
+        ],
+    )
+
+
+@router.get("/explain/global", response_model=GlobalExplainResponse)
+async def explain_global(current_user: User = Depends(get_current_user)) -> GlobalExplainResponse:
+    """Retrieve global TreeSHAP feature importances across all 15 features."""
+    data = engine.get_global_shap_importance()
+    return GlobalExplainResponse(
+        total_features=data["total_features"],
+        sample_size=data["sample_size"],
+        feature_importances=[
+            GlobalFeatureImportanceItem(
+                feature=item["feature"],
+                mean_abs_shap_kw=item["mean_abs_shap_kw"],
+                importance_pct=item["importance_pct"],
+                rank=item["rank"],
+            )
+            for item in data["feature_importances"]
         ],
     )

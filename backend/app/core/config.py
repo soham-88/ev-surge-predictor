@@ -4,8 +4,12 @@ Core configuration for the EV Charging Surge Predictor backend.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+import warnings
+
+logger = logging.getLogger(__name__)
 
 # ── Paths ──
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
@@ -35,8 +39,39 @@ _load_env_file(BACKEND_DIR / ".env")
 _load_env_file(BACKEND_DIR.parent / ".env")
 
 # ── Security & Authentication ──
-JWT_SECRET: str = os.getenv("JWT_SECRET", os.getenv("JWT_SECRET_KEY", "fallback_demo_secret_key_12345"))
+INSECURE_DEFAULT_JWT_SECRETS: set[str] = {
+    "dev-only-insecure-change-me",
+    "ev_surge_production_jwt_secret_grid_pulse_2026",
+    "fallback_demo_secret_key_12345",
+    "your_super_secret_jwt_key_change_in_production_32chars",
+}
+
+JWT_SECRET: str = os.getenv("JWT_SECRET", os.getenv("JWT_SECRET_KEY", "dev-only-insecure-change-me"))
 JWT_EXPIRE_HOURS: int = int(os.getenv("JWT_EXPIRE_HOURS", "12"))
+
+
+def check_jwt_secret_warning(secret: str | None = None) -> bool:
+    """Check if JWT_SECRET is an insecure development default and emit a warning.
+
+    Logs a clear startup WARNING and issues a UserWarning when a default is detected.
+    Does NOT raise an exception or abort startup, so local demos and CI keep functioning.
+    Returns True if an insecure default was detected and warned, False otherwise.
+    """
+    target = secret if secret is not None else JWT_SECRET
+    if target in INSECURE_DEFAULT_JWT_SECRETS:
+        msg = (
+            f"SECURITY WARNING: JWT_SECRET is set to a development default ('{target}'). "
+            "This is insecure for production. You must set a unique, strong secret through "
+            "the JWT_SECRET environment variable for any real deployment."
+        )
+        logger.warning(msg)
+        warnings.warn(msg, UserWarning, stacklevel=2)
+        return True
+    return False
+
+
+# Check on configuration module load
+check_jwt_secret_warning()
 
 # ── Database ──
 DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BACKEND_DIR}/app.db")

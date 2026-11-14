@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { api } from '../services/api';
 import type { PredictResponse, ExplainResponse, SimulateResponse, MetricsResponse } from '../types/telemetry';
 import { useMockTelemetry } from '../hooks/useMockTelemetry';
+import { TELEMETRY_SCENARIOS, type TelemetryScenario } from '../services/telemetryScenarios';
 
 export interface ToastMessage {
   id: string;
@@ -17,6 +18,15 @@ export interface SystemSettings {
   transformerCapacityKw: number;
 }
 
+export interface HeaderKpisState {
+  gridFrequencyHz: number | null;
+  ambientTempC: number | null;
+  latencyMs: number | null;
+  isOffline: boolean;
+  isWeatherLive: boolean;
+  isWeatherStale: boolean;
+}
+
 interface DataContextType {
   settings: SystemSettings;
   updateSettings: (newSettings: Partial<SystemSettings>) => void;
@@ -24,11 +34,7 @@ interface DataContextType {
   explainData: ExplainResponse | null;
   simulateData: SimulateResponse | null;
   metricsData: MetricsResponse | null;
-  headerKpis: {
-    gridFrequencyHz: number;
-    ambientTempC: number;
-    latencyMs: number;
-  };
+  headerKpis: HeaderKpisState;
   bayStates: Record<number, { state: 'ACTIVE' | 'THROTTLED' | 'SHED' | 'IDLE'; kwDraw: number }>;
   handleSimulate: (params: {
     temp_delta_c: number;
@@ -37,6 +43,10 @@ interface DataContextType {
   }) => Promise<SimulateResponse>;
   resetSimulation: () => void;
   isLoading: boolean;
+  isRetrying: boolean;
+  hasError: boolean;
+  errorMessage: string | null;
+  retryLoad: () => Promise<void>;
   isOffline: boolean;
   isSimulationMode: boolean;
   activeSimulationParams: {
@@ -50,17 +60,39 @@ interface DataContextType {
   toasts: ToastMessage[];
   dismissToast: (id: string) => void;
   addToast: (toast: Omit<ToastMessage, 'id'>) => void;
+  activeScenarioId: string;
+  setActiveScenarioId: (id: string) => void;
+  switchScenario: (id: string) => Promise<void>;
+  scenarios: TelemetryScenario[];
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const [activeScenarioId, setActiveScenarioId] = useState<string>('nominal');
+  const activeScenario = TELEMETRY_SCENARIOS.find(s => s.id === activeScenarioId) || TELEMETRY_SCENARIOS[0];
+  const activeScenarioRef = useRef(activeScenario);
+  activeScenarioRef.current = activeScenario;
+
   const [predictData, setPredictData] = useState<PredictResponse | null>(null);
   const [explainData, setExplainData] = useState<ExplainResponse | null>(null);
   const [simulateData, setSimulateData] = useState<SimulateResponse | null>(null);
   const [metricsData, setMetricsData] = useState<MetricsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [realLatencyMs, setRealLatencyMs] = useState<number | null>(null);
+  const [weatherState, setWeatherState] = useState<{
+    temp: number | null;
+    isLive: boolean;
+    isStale: boolean;
+  }>({
+    temp: null,
+    isLive: false,
+    isStale: false,
+  });
   const [isSimulationMode, setIsSimulationMode] = useState(false);
   const [activeSimulationParams, setActiveSimulationParams] = useState<{
     temp_delta_c: number;
@@ -83,30 +115,147 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const mockTelemetry = useMockTelemetry(isSimulationMode || isPaused);
 
-  const loadBaseData = async () => {
+  const fetchWeather = useCallback(async () => {
+    try {
+      const data = await api.getWeather();
+      if (data && typeof data.temperature_c === 'number') {
+        setWeatherState({
+          temp: data.temperature_c,
+          isLive: true,
+          isStale: false,
+        });
+        return data;
+      }
+      throw new Error('Invalid weather data');
+    } catch (error) {
+      setWeatherState(prev => ({
+        temp: prev.temp,
+        isLive: false,
+        isStale: prev.temp !== null,
+      }));
+    }
+  }, []);
+
+  const loadBaseData = async (isRetry = false) => {
+    if (isRetry) {
+      setIsRetrying(true);
+    } else {
+      setIsLoading(true);
+    }
+    setHasError(false);
+    setErrorMessage(null);
+
+    const targetScen = activeScenarioRef.current;
     try {
       const [pRes, eRes, sRes, mRes] = await Promise.all([
-        api.predict(),
-        api.explain(),
-        api.simulate({ temp_delta_c: 0, traffic_surge_pct: 0, forced_outage_stalls: [] }),
+        api.predict(targetScen.telemetry),
+        api.explain(targetScen.telemetry),
+        api.simulate({ temp_delta_c: 0, traffic_surge_pct: 0, forced_outage_stalls: [] })
+          .catch(err => {
+            // Viewers (403 Forbidden) do not have permission to run simulations.
+            // Fall back to baseline simulation data so Viewer dashboard loads normally.
+            console.info('Simulation endpoint restricted or unavailable; using baseline:', err);
+            return mockTelemetry.simulateData;
+          }),
         api.metrics(),
       ]);
+      const measuredLatency = api.getLastPredictLatency();
+      setRealLatencyMs(measuredLatency);
       setPredictData(pRes);
       setExplainData(eRes);
       setSimulateData(sRes);
       setMetricsData(mRes);
       setIsOffline(false);
-    } catch (error) {
-      console.warn('Failed to load data from backend, falling back to mock telemetry');
+      setHasError(false);
+
+      // Sync weather
+      fetchWeather();
+    } catch (error: any) {
+      console.warn('Failed to load data from backend:', error);
       setIsOffline(true);
+      setHasError(true);
+      setRealLatencyMs(null);
+      setWeatherState(prev => ({
+        temp: prev.temp,
+        isLive: false,
+        isStale: prev.temp !== null,
+      }));
+      setErrorMessage(
+        error?.message === 'Unauthorized'
+          ? 'Session expired. Please log in again.'
+          : 'Unable to connect to the Grid Pulse backend. The FastAPI service may be stopped or unreachable.'
+      );
+      setPredictData(null);
+      setExplainData(null);
+      setSimulateData(null);
     } finally {
       setIsLoading(false);
+      setIsRetrying(false);
+    }
+  };
+
+  const switchScenario = async (scenarioId: string) => {
+    setActiveScenarioId(scenarioId);
+    const scen = TELEMETRY_SCENARIOS.find(s => s.id === scenarioId) || TELEMETRY_SCENARIOS[0];
+    activeScenarioRef.current = scen;
+    try {
+      const [pRes, eRes] = await Promise.all([
+        api.predict(scen.telemetry),
+        api.explain(scen.telemetry),
+      ]);
+      setPredictData(pRes);
+      setExplainData(eRes);
+      const measuredLatency = api.getLastPredictLatency();
+      setRealLatencyMs(measuredLatency);
+      setIsOffline(false);
+      setHasError(false);
+    } catch (err) {
+      console.warn('Failed to switch scenario:', err);
     }
   };
 
   useEffect(() => {
     loadBaseData();
   }, []);
+
+  // Periodic weather poll (every 60s when connected)
+  useEffect(() => {
+    if (isOffline) return;
+    const interval = setInterval(fetchWeather, 60000);
+    return () => clearInterval(interval);
+  }, [isOffline, fetchWeather]);
+
+  // Periodic connectivity & predict sync when live feed is active
+  useEffect(() => {
+    if (isPaused || isSimulationMode) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const currentTelemetry = activeScenarioRef.current.telemetry;
+        const pRes = await api.predict(currentTelemetry);
+        const rtt = api.getLastPredictLatency();
+        setRealLatencyMs(rtt);
+        setPredictData(pRes);
+        if (isOffline || hasError) {
+          setIsOffline(false);
+          setHasError(false);
+          setErrorMessage(null);
+          fetchWeather();
+        }
+      } catch (err) {
+        setRealLatencyMs(null);
+        setIsOffline(true);
+        setHasError(true);
+        setWeatherState(prev => ({
+          temp: prev.temp,
+          isLive: false,
+          isStale: prev.temp !== null,
+        }));
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isPaused, isSimulationMode, isOffline, hasError, fetchWeather]);
 
   const handleSimulate = async (params: {
     temp_delta_c: number;
@@ -140,9 +289,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const currentPredict = isOffline ? mockTelemetry.predictData : predictData;
-  const currentExplain = isOffline ? mockTelemetry.explainData : explainData;
-  const currentSimulate = isOffline && !isSimulationMode ? mockTelemetry.simulateData : simulateData;
+  const currentPredict = hasError ? null : (isOffline ? mockTelemetry.predictData : predictData);
+  const currentExplain = hasError ? null : (isOffline ? mockTelemetry.explainData : explainData);
+  const currentSimulate = hasError ? null : (isOffline && !isSimulationMode ? mockTelemetry.simulateData : simulateData);
 
   const outPredict = currentPredict ? JSON.parse(JSON.stringify(currentPredict)) as PredictResponse : null;
   const outSimulate = currentSimulate ? JSON.parse(JSON.stringify(currentSimulate)) as SimulateResponse : null;
@@ -175,8 +324,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const activeSurgeRisk = outSimulate?.surge_risk || outPredict?.surge_status;
-  const activeMultiplier = outSimulate?.dispatched_mitigations.dynamic_tariff_multiplier;
+  const activeSurgeRisk = isSimulationMode ? outSimulate?.surge_risk : outPredict?.surge_status;
+  const activeMultiplier = isSimulationMode
+    ? outSimulate?.dispatched_mitigations.dynamic_tariff_multiplier
+    : outPredict?.recommended_actions.dynamic_tariff_multiplier;
 
   useEffect(() => {
     if (activeSurgeRisk && activeSurgeRisk !== 'NORMAL' && activeSurgeRisk !== prevSurgeRisk.current) {
@@ -216,8 +367,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [activeSurgeRisk, activeMultiplier, outSimulate, outPredict, settings.transformerCapacityKw]);
 
-  // Derive bay states in simulation mode
-  const currentBayStates = { ...mockTelemetry.bayStates };
+  // Derive bay states
+  const currentBayStates: Record<number, { state: 'ACTIVE' | 'THROTTLED' | 'SHED' | 'IDLE'; kwDraw: number }> = {};
   if (isSimulationMode && activeSimulationParams && outSimulate && outPredict) {
     const forced = activeSimulationParams.forced_outage_stalls;
     const throttled = outSimulate.dispatched_mitigations.throttled_stalls;
@@ -226,15 +377,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
     outPredict.recommended_actions.throttle_active = throttled.length > 0;
     outPredict.recommended_actions.shed_stalls = forced || [];
 
-    // Clear all existing overrides, let them be ACTIVE or IDLE natively
     for (let i = 1; i <= 8; i++) {
       if (forced.includes(i)) {
         currentBayStates[i] = { state: 'SHED', kwDraw: 0.0 };
       } else if (throttled.includes(i)) {
         currentBayStates[i] = { state: 'THROTTLED', kwDraw: outPredict.recommended_actions.per_stall_cap_kw || 60.0 };
+      } else {
+        currentBayStates[i] = { state: 'ACTIVE', kwDraw: 25.0 };
+      }
+    }
+  } else {
+    // Normal / Live mode: bay states driven by active scenario plugs and draw
+    const plugs = activeScenario.telemetry.active_plugs;
+    const avgKw = plugs > 0 ? Number((activeScenario.telemetry.load_lags_kw[0] / plugs).toFixed(1)) : 0;
+    for (let i = 1; i <= 8; i++) {
+      if (i <= plugs) {
+        currentBayStates[i] = { state: 'ACTIVE', kwDraw: avgKw };
+      } else {
+        currentBayStates[i] = { state: 'IDLE', kwDraw: 0.0 };
       }
     }
   }
+
+  const isBackendUnreachable = isOffline || hasError;
+
+  const headerKpis: HeaderKpisState = {
+    gridFrequencyHz: isBackendUnreachable ? null : activeScenario.telemetry.grid_frequency_hz,
+    ambientTempC: weatherState.temp ?? activeScenario.telemetry.ambient_temp_c,
+    latencyMs: isBackendUnreachable ? null : realLatencyMs,
+    isOffline: isBackendUnreachable,
+    isWeatherLive: !isBackendUnreachable && weatherState.isLive,
+    isWeatherStale: weatherState.isStale,
+  };
 
   return (
     <DataContext.Provider
@@ -245,11 +419,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         explainData: currentExplain,
         simulateData: outSimulate,
         metricsData,
-        headerKpis: mockTelemetry.headerKpis,
+        headerKpis,
         bayStates: currentBayStates,
         handleSimulate,
         resetSimulation,
         isLoading,
+        isRetrying,
+        hasError,
+        errorMessage,
+        retryLoad: () => loadBaseData(true),
         isOffline,
         isSimulationMode,
         activeSimulationParams,
@@ -264,7 +442,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id));
           }, 5000);
-        }
+        },
+        activeScenarioId,
+        setActiveScenarioId,
+        switchScenario,
+        scenarios: TELEMETRY_SCENARIOS,
       }}
     >
       {children}

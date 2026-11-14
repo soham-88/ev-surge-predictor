@@ -22,12 +22,13 @@ export function StyledSlider({
   onChange,
 }: StyledSliderProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const pct = ((value - min) / (max - min)) * 100;
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+  const inputId = `slider-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-between items-center">
-        <label className="font-label-mono text-label-mono text-text-secondary">
+        <label htmlFor={inputId} className="font-label-mono text-label-mono text-text-secondary cursor-pointer">
           {label}
         </label>
         <span className="font-label-mono text-label-mono text-primary font-bold tabular-nums">
@@ -38,12 +39,13 @@ export function StyledSlider({
       </div>
       
       {/* Container with top padding to fit the floating bubble */}
-      <div className="relative pt-8 pb-2">
+      <div className="relative pt-6 pb-1">
         {/* Floating Bubble */}
         <div
           className={`absolute top-0 -translate-x-1/2 transition-all duration-200 pointer-events-none
             ${isDragging ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
           style={{ left: `${pct}%` }}
+          aria-hidden="true"
         >
           <div className="bg-surface-container border border-border-subtle rounded px-2 py-1 text-[10px] font-label-mono text-primary font-bold shadow-[0_0_8px_rgba(34,211,238,0.3)] whitespace-nowrap">
             {prefix}{value}{unit}
@@ -51,6 +53,8 @@ export function StyledSlider({
         </div>
 
         <input
+          id={inputId}
+          aria-label={`${label}: ${prefix}${value}${unit}`}
           type="range"
           min={min}
           max={max}

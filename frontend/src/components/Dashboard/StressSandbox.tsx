@@ -1,40 +1,34 @@
-import { useState, useEffect } from 'react';
 import { Tile } from '../ui/Tile';
+import { StyledSlider } from '../ui/StyledSlider';
+import { useTariff } from '../../context/TariffContext';
 
 interface Props {
   onSimulate: (params: {
     temp_delta_c: number;
     traffic_surge_pct: number;
     forced_outage_stalls: number[];
-  }) => void;
+  }) => void | Promise<void>;
   isSimulationMode: boolean;
   baselineKw: number;
   simulatedKw: number;
+  isApplying?: boolean;
 }
 
-import { StyledSlider } from '../ui/StyledSlider';
-import { useTariff } from '../../context/TariffContext';
-
-export function StressSandbox({ onSimulate, isSimulationMode, baselineKw, simulatedKw }: Props) {
-  const { simulationParams, isSimulationActive } = useTariff();
-  const [tempDelta, setTempDelta] = useState(simulationParams.tempDelta);
-  const [trafficSurge, setTrafficSurge] = useState(simulationParams.trafficSurgePct);
-  const [forcedOutageCount, setForcedOutageCount] = useState(simulationParams.outageStalls);
-
-  // Reset sliders when simulation is reset externally
-  useEffect(() => {
-    if (!isSimulationMode || !isSimulationActive) {
-      setTempDelta(0);
-      setTrafficSurge(0);
-      setForcedOutageCount(0);
-    }
-  }, [isSimulationMode, isSimulationActive]);
+export function StressSandbox({
+  onSimulate,
+  isSimulationMode,
+  baselineKw,
+  simulatedKw,
+  isApplying = false,
+}: Props) {
+  const { simulationParams, setTempDelta, setTrafficSurgePct, setOutageStalls } = useTariff();
 
   const handleApply = () => {
+    if (isApplying) return;
     onSimulate({
-      temp_delta_c: tempDelta,
-      traffic_surge_pct: trafficSurge,
-      forced_outage_stalls: Array.from({ length: forcedOutageCount }, (_, i) => i + 1),
+      temp_delta_c: simulationParams.tempDelta,
+      traffic_surge_pct: simulationParams.trafficSurgePct,
+      forced_outage_stalls: Array.from({ length: simulationParams.outageStalls }, (_, i) => i + 1),
     });
   };
 
@@ -52,51 +46,60 @@ export function StressSandbox({ onSimulate, isSimulationMode, baselineKw, simula
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <StyledSlider
           label="Temperature Δ"
-          value={tempDelta}
+          value={simulationParams.tempDelta}
           min={0}
           max={15}
           step={1}
           unit="°C"
-          prefix={tempDelta > 0 ? '+' : ''}
+          prefix={simulationParams.tempDelta > 0 ? '+' : ''}
           onChange={setTempDelta}
         />
         <StyledSlider
           label="Traffic Surge"
-          value={trafficSurge}
+          value={simulationParams.trafficSurgePct}
           min={0}
           max={100}
           step={5}
           unit="%"
           prefix="+"
-          onChange={setTrafficSurge}
+          onChange={setTrafficSurgePct}
         />
         <StyledSlider
           label="Forced Outage Stalls"
-          value={forcedOutageCount}
+          value={simulationParams.outageStalls}
           min={0}
           max={8}
           step={1}
           unit=" bays"
-          onChange={setForcedOutageCount}
+          onChange={setOutageStalls}
         />
       </div>
       
       {/* Footer / Action */}
-      <div className="flex justify-between items-center pt-4 border-t border-border-subtle">
-        <div className="font-label-mono text-text-secondary flex gap-2 items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4 border-t border-border-subtle">
+        <div className="font-label-mono text-text-secondary flex flex-wrap gap-2 items-center text-xs">
           {isSimulationMode && (
             <>
               Baseline: <span className="text-text-primary font-bold">{baselineKw.toFixed(1)} kW</span> 
-              <span className="material-symbols-outlined text-sm mx-1">arrow_forward</span> 
+              <span className="material-symbols-outlined text-sm mx-1" aria-hidden="true">arrow_forward</span> 
               Simulated: <span className="text-status-warning font-bold">{simulatedKw.toFixed(1)} kW</span>
             </>
           )}
         </div>
         <button 
           onClick={handleApply}
-          className="px-6 py-2 rounded border border-primary/50 text-primary font-label-mono text-label-mono font-bold hover:bg-primary/10 transition-colors"
+          disabled={isApplying}
+          aria-label="Apply simulation parameters"
+          className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded border border-primary/50 text-primary font-label-mono text-xs font-bold hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Apply Simulation
+          {isApplying ? (
+            <>
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span>APPLYING...</span>
+            </>
+          ) : (
+            <span>Apply Simulation</span>
+          )}
         </button>
       </div>
     </Tile>

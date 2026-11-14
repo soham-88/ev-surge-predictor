@@ -1,4 +1,4 @@
-import type { PredictResponse, ExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse } from '../types/telemetry';
+import type { PredictResponse, ExplainResponse, GlobalExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse, IncidentHistoryResponse } from '../types/telemetry';
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const API_BASE_URL = RAW_API_URL.endsWith('/api/v1')
@@ -16,12 +16,17 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
     if (response.status === 401) {
       localStorage.removeItem('token');
       // A quick reload to force the user to login page if token is dead
-      window.dispatchEvent(new Event('auth-unauthorized'));
+      window.dispatchEvent(new CustomEvent('auth-unauthorized', { detail: { message: 'Session expired' } }));
     }
-    throw { status: response.status, message: 'Unauthorized' };
+    throw { status: response.status, message: response.status === 401 ? 'Unauthorized' : 'Forbidden' };
   }
   return response;
 }
+
+let lastPredictLatencyMs: number | null = null;
+let lastPredictSuccess: boolean = false;
+let lastWeatherSuccess: boolean = false;
+let lastKnownWeatherTemp: number | null = null;
 
 export const api = {
   async login(username: string, password: string) {
@@ -45,26 +50,90 @@ export const api = {
   },
 
   async getWeather() {
-    const response = await fetchWithAuth(`${API_BASE_URL}/weather/current`);
-    if (!response.ok) throw new Error('API Error');
-    return await response.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/weather/current`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        lastWeatherSuccess = false;
+        throw new Error('API Error');
+      }
+      const data = await response.json();
+      lastWeatherSuccess = true;
+      if (typeof data?.temperature_c === 'number') {
+        lastKnownWeatherTemp = data.temperature_c;
+      }
+      return data;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastWeatherSuccess = false;
+      throw err;
+    }
   },
 
-  async predict(): Promise<PredictResponse> {
-    const response = await fetchWithAuth(`${API_BASE_URL}/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        timestamp: new Date().toISOString(),
-        ambient_temp_c: 36.5,
-        traffic_inflow_index: 82,
-        active_plugs: 7,
-        grid_frequency_hz: 59.92,
-        load_lags_kw: [142.0, 158.5, 175.0, 192.0],
-      }),
-    });
-    if (!response.ok) throw new Error('API Error');
-    return await response.json();
+  async predict(customPayload?: Partial<{
+    timestamp: string;
+    ambient_temp_c: number;
+    traffic_inflow_index: number;
+    active_plugs: number;
+    grid_frequency_hz: number;
+    load_lags_kw: number[] | [number, number, number, number];
+  }>): Promise<PredictResponse> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const startTime = performance.now();
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ambient_temp_c: 36.5,
+      traffic_inflow_index: 82,
+      active_plugs: 7,
+      grid_frequency_hz: 49.92,
+      load_lags_kw: [142.0, 158.5, 175.0, 192.0],
+      ...customPayload,
+    };
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify(payload),
+      });
+      clearTimeout(timeoutId);
+      const latencyMs = performance.now() - startTime;
+      if (!response.ok) {
+        lastPredictLatencyMs = null;
+        lastPredictSuccess = false;
+        throw new Error('API Error');
+      }
+      const data = await response.json();
+      lastPredictLatencyMs = latencyMs;
+      lastPredictSuccess = true;
+      return data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastPredictLatencyMs = null;
+      lastPredictSuccess = false;
+      throw error;
+    }
+  },
+
+  getLastPredictLatency(): number | null {
+    return lastPredictLatencyMs;
+  },
+
+  isLastPredictSuccess(): boolean {
+    return lastPredictSuccess;
+  },
+
+  isLastWeatherSuccess(): boolean {
+    return lastWeatherSuccess;
+  },
+
+  getLastKnownTemp(): number | null {
+    return lastKnownWeatherTemp;
   },
 
   async explain(customPayload?: Partial<{
@@ -80,7 +149,7 @@ export const api = {
       ambient_temp_c: 36.5,
       traffic_inflow_index: 82,
       active_plugs: 7,
-      grid_frequency_hz: 59.92,
+      grid_frequency_hz: 49.92,
       load_lags_kw: [142.0, 158.5, 175.0, 192.0],
     };
     const response = await fetchWithAuth(`${API_BASE_URL}/explain`, {
@@ -88,6 +157,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(customPayload ? { ...defaultPayload, ...customPayload } : defaultPayload),
     });
+    if (!response.ok) throw new Error('API Error');
+    return await response.json();
+  },
+
+  async explainGlobal(): Promise<GlobalExplainResponse> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/explain/global`);
     if (!response.ok) throw new Error('API Error');
     return await response.json();
   },
@@ -104,6 +179,22 @@ export const api = {
 
   async metrics(): Promise<MetricsResponse> {
     const response = await fetchWithAuth(`${API_BASE_URL}/metrics`);
+    if (!response.ok) throw new Error('API Error');
+    return await response.json();
+  },
+
+  async getIncidents(limit = 50, surgeStatus?: 'WARNING' | 'CRITICAL'): Promise<IncidentHistoryResponse> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (surgeStatus) query.append('surge_status', surgeStatus);
+    const response = await fetchWithAuth(`${API_BASE_URL}/incidents?${query.toString()}`);
+    if (!response.ok) throw new Error('API Error');
+    return await response.json();
+  },
+
+  async clearIncidents(): Promise<{ message: string; deleted_count: number }> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/incidents`, {
+      method: 'DELETE',
+    });
     if (!response.ok) throw new Error('API Error');
     return await response.json();
   },

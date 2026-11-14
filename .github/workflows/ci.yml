@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  backend:
+    name: Backend Tests (Python 3.13)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r backend/requirements.txt
+
+      - name: Run pytest
+        run: |
+          pytest backend/tests/ -v
+
+  frontend:
+    name: Frontend Build & Tests (Node 20)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript & Build
+        run: npm run build
+
+      - name: Run Vitest
+        run: npm test
+
+  docker:
+    name: Docker Compose Integration Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker images
+        run: docker compose build
+
+      - name: Start Docker Compose services
+        run: docker compose up -d
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting up to 90 seconds for frontend and backend health through Nginx proxy..."
+          TIMEOUT=90
+          INTERVAL=2
+          ELAPSED=0
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            FRONTEND_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ || true)
+            BACKEND_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
+            
+            echo "[$ELAPSED s] Frontend HTTP: $FRONTEND_CODE | Backend Health HTTP: $BACKEND_CODE"
+            
+            if [ "$FRONTEND_CODE" = "200" ] && [ "$BACKEND_CODE" = "200" ]; then
+              echo "Services are ready!"
+              break
+            fi
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "Timed out waiting for services after ${TIMEOUT}s"
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Test login and prediction through Nginx proxy
+        run: |
+          OPERATOR_USER="operator"
+          OPERATOR_PASS="operatorpassword123"
+          
+          echo "Logging in as seeded operator user..."
+          LOGIN_RESP=$(curl -s -S -X POST http://localhost/api/v1/auth/login \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "username=${OPERATOR_USER}&password=${OPERATOR_PASS}")
+          
+          TOKEN=$(echo "$LOGIN_RESP" | jq -r '.access_token // empty')
+          
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "Failed to retrieve access token. Login response:"
+            echo "$LOGIN_RESP"
+            docker compose logs
+            exit 1
+          fi
+          
+          echo "Access token obtained successfully."
+          
+          echo "Testing /api/v1/predict with valid telemetry payload..."
+          PREDICT_RESP=$(curl -s -S -w "\n%{http_code}" -X POST http://localhost/api/v1/predict \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "timestamp": "2026-10-31T14:30:00Z",
+              "ambient_temp_c": 32.5,
+              "traffic_inflow_index": 65,
+              "active_plugs": 6,
+              "grid_frequency_hz": 49.92,
+              "load_lags_kw": [145.2, 140.0, 138.5, 130.0]
+            }')
+          
+          HTTP_BODY=$(echo "$PREDICT_RESP" | sed '$d')
+          HTTP_CODE=$(echo "$PREDICT_RESP" | tail -n1)
+          
+          echo "Predict HTTP status code: $HTTP_CODE"
+          echo "Predict response body: $HTTP_BODY"
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Prediction assertion failed: expected 200, got $HTTP_CODE"
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Print Docker logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down Docker Compose
+        if: always()
+        run: docker compose down -v
+

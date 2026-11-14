@@ -12,6 +12,8 @@ export interface PredictResponse {
   surge_status: 'NORMAL' | 'WARNING' | 'CRITICAL';
   recommended_actions: RecommendedActions;
   inference_latency_ms: number;
+  lower_bound_kw?: number;
+  upper_bound_kw?: number;
 }
 
 export interface Attribution {
@@ -24,6 +26,36 @@ export interface ExplainResponse {
   base_value_kw: number;
   predicted_value_kw: number;
   attributions: Attribution[];
+}
+
+export interface GlobalFeatureImportanceItem {
+  feature: string;
+  mean_abs_shap_kw: number;
+  importance_pct: number;
+  rank: number;
+}
+
+export interface GlobalExplainResponse {
+  total_features: number;
+  sample_size: number;
+  feature_importances: GlobalFeatureImportanceItem[];
+}
+
+export interface IncidentItem {
+  id: number;
+  timestamp: string;
+  surge_status: 'WARNING' | 'CRITICAL';
+  predicted_load_kw: number;
+  capacity_utilization_pct: number;
+  tariff_multiplier: number;
+  throttled_bays_count: number;
+  shed_bays_count: number;
+  operator_username?: string | null;
+}
+
+export interface IncidentHistoryResponse {
+  total: number;
+  incidents: IncidentItem[];
 }
 
 export interface TimelinePoint {
@@ -81,4 +113,32 @@ export interface BatchPredictResponse {
   predictions: BatchPrediction[];
   download_url: string;
 }
+
+export const FEATURE_READABLE_NAMES: Record<string, string> = {
+  ambient_temp_c: 'Ambient Temperature',
+  traffic_inflow_index: 'Traffic Inflow Index',
+  active_plugs: 'Active Plugs',
+  grid_frequency_hz: 'Grid Frequency',
+  load_lag_15m: '15m Load Lag',
+  load_lag_30m: '30m Load Lag',
+  load_lag_45m: '45m Load Lag',
+  load_lag_60m: '60m Load Lag',
+  rolling_mean_60m: '60m Rolling Mean',
+  rolling_std_60m: '60m Rolling Std',
+  plug_delta_15m: '15m Plug Delta',
+  hour_sin: 'Hour Cycle (sin)',
+  hour_cos: 'Hour Cycle (cos)',
+  day_sin: 'Day Cycle (sin)',
+  day_cos: 'Day Cycle (cos)',
+};
+
+export function getFeatureReadableName(feature: string): string {
+  if (FEATURE_READABLE_NAMES[feature]) {
+    return FEATURE_READABLE_NAMES[feature];
+  }
+  return feature
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
 

@@ -12,10 +12,13 @@ import {
 } from 'recharts';
 import { Tile } from '../components/ui/Tile';
 import { AnimatedNumber } from '../components/ui/AnimatedNumber';
+import { EmptyState } from '../components/ui/EmptyState';
+import { useToast } from '../context/ToastContext';
 import { api } from '../services/api';
 import type { BatchPredictResponse } from '../types/telemetry';
 
 export function BatchAnalysis() {
+  const toast = useToast();
   const [dragActive, setDragActive] = useState(false);
 
   const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle');
@@ -76,13 +79,28 @@ export function BatchAnalysis() {
       const res = await api.uploadBatchCSV(selectedFile);
       setResult(res);
       setUploadState('success');
+      toast.success(
+        `Batch analysis complete: ${res.rows_processed} predictions generated (${res.summary.critical_events_count} critical surges detected).`,
+        'Batch Processing Complete'
+      );
     } catch (err: any) {
       setUploadState('error');
       if (err.status === 422 && err.data?.detail?.expected_columns) {
         setErrorMsg('Missing required columns in CSV.');
         setMissingCols(err.data.detail.expected_columns);
       } else {
-        setErrorMsg(err.data?.detail || 'An unexpected error occurred during batch processing.');
+        const detail = err.data?.detail;
+        let msg = 'An unexpected error occurred during batch processing.';
+        if (typeof detail === 'string') {
+          msg = detail;
+        } else if (detail?.message) {
+          msg = detail.message;
+        } else if (Array.isArray(detail) && detail.length > 0 && detail[0].msg) {
+          msg = detail[0].msg;
+        } else if (typeof detail === 'object') {
+          msg = JSON.stringify(detail);
+        }
+        setErrorMsg(msg);
       }
     }
   };
@@ -97,12 +115,36 @@ export function BatchAnalysis() {
 
   // Prepare chart data
   const chartData = useMemo(() => {
-    if (!result) return [];
-    return result.predictions.map(p => ({
-      ...p,
-      timeLabel: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      critical_point: p.surge_status === 'CRITICAL' ? p.predicted_kw : null
-    }));
+    if (!result || result.predictions.length === 0) return [];
+
+    // Check if the predictions span more than one day
+    const firstTime = new Date(result.predictions[0].timestamp).getTime();
+    const lastTime = new Date(result.predictions[result.predictions.length - 1].timestamp).getTime();
+    const firstDateStr = new Date(result.predictions[0].timestamp).toDateString();
+    const lastDateStr = new Date(result.predictions[result.predictions.length - 1].timestamp).toDateString();
+    const spansMultipleDays = firstDateStr !== lastDateStr || Math.abs(lastTime - firstTime) >= 24 * 3600 * 1000;
+
+    return result.predictions.map(p => {
+      const d = new Date(p.timestamp);
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      const timeStr = `${hours}:${mins}`;
+
+      let timeLabel: string;
+      if (spansMultipleDays) {
+        const month = d.toLocaleDateString('en-US', { month: 'short' });
+        const day = d.getDate();
+        timeLabel = `${month} ${day}, ${timeStr}`;
+      } else {
+        timeLabel = timeStr;
+      }
+
+      return {
+        ...p,
+        timeLabel,
+        critical_point: p.surge_status === 'CRITICAL' ? p.predicted_kw : null
+      };
+    });
   }, [result]);
 
   const paginatedRows = useMemo(() => {
@@ -149,6 +191,8 @@ export function BatchAnalysis() {
           >
             <input
               ref={fileInputRef}
+              id="batch-file-upload"
+              aria-label="Upload historical telemetry CSV file for batch analysis"
               type="file"
               accept=".csv"
               className="hidden"
@@ -156,25 +200,31 @@ export function BatchAnalysis() {
             />
 
             {uploadState === 'idle' && (
-              <>
-                <span className="material-symbols-outlined text-5xl text-primary/80 mb-4">upload_file</span>
-                <p className="font-headline-md text-text-primary mb-2">Drag and drop your CSV here</p>
-                <p className="font-body-md text-text-secondary mb-6 text-center max-w-md">
-                  File must include timestamps, telemetry, load lags, and actual_kw (the t+2h target).
-                </p>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-6 py-2.5 bg-primary text-on-primary font-bold rounded-lg hover:shadow-[0_0_15px_rgba(138,235,255,0.4)] transition-all"
-                >
-                  Browse Files
-                </button>
-              </>
+              <EmptyState
+                icon="upload_file"
+                title="No Batch Dataset Loaded"
+                description="Upload a historical or synthesized telemetry CSV with timestamps, ambient conditions, and load lags to perform vectorized surge prediction."
+                action={
+                  <div className="flex flex-col items-center gap-3">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-6 py-2.5 bg-primary text-on-primary font-bold rounded-lg hover:shadow-[0_0_15px_rgba(138,235,255,0.4)] transition-all font-label-mono text-xs uppercase tracking-wider cursor-pointer"
+                    >
+                      Browse Files
+                    </button>
+                    <span className="font-label-mono text-text-secondary text-[11px]">
+                      or drag & drop your .csv file directly into this dropzone
+                    </span>
+                  </div>
+                }
+                className="bg-transparent border-0 p-0 shadow-none"
+              />
             )}
 
             {uploadState === 'uploading' && (
               <div className="flex flex-col items-center gap-4 w-full max-w-xs">
                 <span className="material-symbols-outlined text-4xl text-primary animate-bounce">cloud_upload</span>
-                <p className="font-label-mono tracking-widest text-primary">UPLOADING...</p>
+                <p className="font-label-mono tracking-widest text-primary text-xs uppercase font-bold">UPLOADING CSV...</p>
                 <div className="w-full h-2 bg-surface-bright rounded-full overflow-hidden">
                   <motion.div 
                     className="h-full bg-primary"
@@ -189,21 +239,33 @@ export function BatchAnalysis() {
             {uploadState === 'processing' && (
               <div className="flex flex-col items-center gap-4">
                 <div className="w-12 h-12 rounded-full border-4 border-t-primary border-primary/20 animate-spin" />
-                <p className="font-label-mono tracking-widest text-primary animate-pulse">RUNNING VECTORIZED INFERENCE...</p>
+                <p className="font-label-mono tracking-widest text-primary animate-pulse text-xs uppercase font-bold">RUNNING VECTORIZED INFERENCE...</p>
               </div>
             )}
 
             {uploadState === 'error' && (
-              <div className="flex flex-col items-center text-center">
-                <span className="material-symbols-outlined text-5xl text-status-critical mb-4">error</span>
-                <p className="font-headline-md text-status-critical mb-2">{errorMsg}</p>
+              <div className="flex flex-col items-center text-center w-full max-w-md mx-auto">
+                <div className="w-16 h-16 rounded-full bg-status-critical/15 border border-status-critical/30 flex items-center justify-center mb-4 text-status-critical shadow-[0_0_20px_rgba(244,63,94,0.25)]">
+                  <span className="material-symbols-outlined text-3xl">warning</span>
+                </div>
+                <h3 className="font-headline-md text-lg font-bold text-status-critical mb-1">
+                  CSV Validation Error
+                </h3>
+                <p className="font-body-md text-text-secondary mb-4 text-xs leading-relaxed">
+                  {errorMsg}
+                </p>
                 
                 {missingCols.length > 0 && (
-                  <div className="bg-status-critical/10 border border-status-critical/30 rounded-lg p-4 mt-4 text-left w-full max-w-md">
-                    <p className="font-label-mono text-status-critical text-xs mb-2 uppercase tracking-wider">Required Columns</p>
+                  <div className="bg-status-critical/10 border border-status-critical/30 rounded-xl p-4 mb-6 text-left w-full shadow-inner">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <span className="material-symbols-outlined text-status-critical text-base">checklist</span>
+                      <p className="font-label-mono text-status-critical text-xs uppercase tracking-wider font-bold">
+                        Missing Required Columns ({missingCols.length})
+                      </p>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {missingCols.map(c => (
-                        <span key={c} className="px-2 py-1 bg-status-critical/20 text-status-critical text-xs rounded font-label-mono">
+                        <span key={c} className="px-2.5 py-1 bg-status-critical/20 border border-status-critical/40 text-status-critical text-xs rounded-md font-label-mono font-semibold">
                           {c}
                         </span>
                       ))}
@@ -212,10 +274,14 @@ export function BatchAnalysis() {
                 )}
                 
                 <button
-                  onClick={() => setUploadState('idle')}
-                  className="mt-6 px-6 py-2 bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-xs tracking-widest"
+                  onClick={() => {
+                    setUploadState('idle');
+                    setErrorMsg(null);
+                    setMissingCols([]);
+                  }}
+                  className="px-6 py-2.5 bg-surface-variant hover:bg-surface-bright text-text-primary rounded-xl transition-colors border border-outline-variant font-label-mono text-xs uppercase tracking-widest font-bold cursor-pointer"
                 >
-                  TRY AGAIN
+                  UPLOAD DIFFERENT CSV
                 </button>
               </div>
             )}
@@ -254,7 +320,7 @@ export function BatchAnalysis() {
               <div className="font-kpi-large text-text-primary">
                 {result.summary.avg_mae_vs_actual_kw !== null ? (
                   <>
-                    <AnimatedNumber value={result.summary.avg_mae_vs_actual_kw} />
+                    <AnimatedNumber value={result.summary.avg_mae_vs_actual_kw} decimals={1} />
                     <span className="text-xl text-text-secondary ml-1">kW</span>
                   </>
                 ) : (
@@ -372,12 +438,15 @@ export function BatchAnalysis() {
                       </td>
                       <td className="py-3 font-label-mono text-sm text-primary text-right">{row.predicted_kw.toFixed(1)}</td>
                       <td className="py-3 text-right">
-                        <span className={`px-2 py-1 rounded text-xs font-bold tracking-wide ${
-                          row.surge_status === 'CRITICAL' ? 'bg-status-critical/20 text-status-critical' :
-                          row.surge_status === 'WARNING' ? 'bg-status-warning/20 text-status-warning' :
-                          'bg-status-normal/20 text-status-normal'
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold tracking-wide ${
+                          row.surge_status === 'CRITICAL' ? 'bg-status-critical/20 text-status-critical border border-status-critical/30' :
+                          row.surge_status === 'WARNING' ? 'bg-status-warning/20 text-status-warning border border-status-warning/30' :
+                          'bg-status-normal/20 text-status-normal border border-status-normal/30'
                         }`}>
-                          {row.surge_status}
+                          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">
+                            {row.surge_status === 'CRITICAL' ? 'error' : row.surge_status === 'WARNING' ? 'warning' : 'check_circle'}
+                          </span>
+                          <span>{row.surge_status}</span>
                         </span>
                       </td>
                     </tr>
@@ -394,7 +463,8 @@ export function BatchAnalysis() {
                   <button 
                     disabled={page === 1}
                     onClick={() => setPage(p => p - 1)}
-                    className="p-1 rounded hover:bg-surface-variant disabled:opacity-50 transition-colors"
+                    aria-label="Previous page"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded hover:bg-surface-variant disabled:opacity-40 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <span className="material-symbols-outlined text-lg">chevron_left</span>
                   </button>
@@ -402,7 +472,8 @@ export function BatchAnalysis() {
                   <button 
                     disabled={page === totalPages}
                     onClick={() => setPage(p => p + 1)}
-                    className="p-1 rounded hover:bg-surface-variant disabled:opacity-50 transition-colors"
+                    aria-label="Next page"
+                    className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded hover:bg-surface-variant disabled:opacity-40 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <span className="material-symbols-outlined text-lg">chevron_right</span>
                   </button>
