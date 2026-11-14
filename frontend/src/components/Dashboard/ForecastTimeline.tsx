@@ -166,7 +166,7 @@ export function ForecastTimeline({
   return (
     <>
       {/* ═══ Hero Chart Tile (8-col) ═══ */}
-      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-h-100 pb-16 min-w-0 max-w-full overflow-hidden`}>
+      <Tile index={0} className={`${isReport ? 'col-span-8' : 'md:col-span-8'} flex flex-col min-w-0 max-w-full overflow-hidden`}>
         {/* Ambient Glow Background */}
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
 
@@ -252,7 +252,7 @@ export function ForecastTimeline({
         </div>
 
         {/* Chart */}
-        <div className="flex-1 w-full relative z-10 mt-4" style={{ minHeight: '280px' }}>
+        <div className="flex-1 w-full relative z-10 mt-4 h-72 sm:h-80 min-h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
               <defs>
@@ -365,7 +365,7 @@ export function ForecastTimeline({
       {/* ═══ Utility KPI Cards (4-col each) ═══ */}
 
       {/* Capacity Utilization */}
-      <Tile index={1} className={`${isReport ? 'col-span-4' : 'md:col-span-4'} flex flex-col items-center justify-center min-h-100`}>
+      <Tile index={1} className={`${isReport ? 'col-span-4' : 'md:col-span-4'} flex flex-col items-center justify-center p-6 relative`}>
         <h3 className="font-headline-md text-headline-md text-text-primary absolute top-6 left-6">
           Capacity Utilization
         </h3>
@@ -411,7 +411,7 @@ export function ForecastTimeline({
 
       <Tile 
         index={2} 
-        className={`surge-glow-card ${isReport ? 'col-span-6' : 'md:col-span-4'} flex flex-col justify-between min-h-50 border-t-2 ${surgeStatus === 'CRITICAL' ? 'border-t-status-critical shadow-[0_0_30px_-10px_rgba(244,63,94,0.15)] shake' : surgeStatus === 'WARNING' ? 'border-t-status-warning shadow-[0_0_30px_-10px_rgba(245,158,11,0.15)]' : 'border-t-transparent'}`}
+        className={`surge-glow-card ${isReport ? 'col-span-6' : 'md:col-span-4'} flex flex-col justify-between p-6 border-t-2 ${surgeStatus === 'CRITICAL' ? 'border-t-status-critical shadow-[0_0_30px_-10px_rgba(244,63,94,0.15)] shake' : surgeStatus === 'WARNING' ? 'border-t-status-warning shadow-[0_0_30px_-10px_rgba(245,158,11,0.15)]' : 'border-t-transparent'}`}
         style={{ 
           '--pulse-duration': capacityPct >= settings.criticalThresholdPct ? '0.8s' : capacityPct >= settings.warningThresholdPct ? '1.5s' : '2.5s',
           '--glow-color': capacityPct >= settings.criticalThresholdPct ? 'rgba(244, 63, 94, 0.25)' : capacityPct >= settings.warningThresholdPct ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.1)'
@@ -446,7 +446,7 @@ export function ForecastTimeline({
       {/* Mitigation Actions */}
       <Tile 
         index={3} 
-        className={`${isReport ? 'col-span-6' : 'md:col-span-4'} flex flex-col min-h-50 border-t-2 ${recommendedActions.throttle_active ? 'border-t-status-warning shadow-[0_0_30px_-10px_rgba(245,158,11,0.15)]' : recommendedActions.shed_stalls.length > 0 ? 'border-t-status-critical shadow-[0_0_30px_-10px_rgba(244,63,94,0.15)]' : 'border-t-transparent'}`}
+        className={`${isReport ? 'col-span-6' : 'md:col-span-4'} flex flex-col p-6 border-t-2 ${recommendedActions.throttle_active ? 'border-t-status-warning shadow-[0_0_30px_-10px_rgba(245,158,11,0.15)]' : recommendedActions.shed_stalls.length > 0 ? 'border-t-status-critical shadow-[0_0_30px_-10px_rgba(244,63,94,0.15)]' : 'border-t-transparent'}`}
       >
         <div className="flex justify-between items-start mb-6">
           <h3 className="font-headline-md text-headline-md text-text-primary">Mitigation Actions</h3>

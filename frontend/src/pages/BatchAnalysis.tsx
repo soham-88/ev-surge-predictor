@@ -331,7 +331,7 @@ export function BatchAnalysis() {
           </div>
 
           {/* Chart Overlay */}
-          <Tile className="p-6 h-100 flex flex-col">
+          <Tile className="p-6 h-[340px] sm:h-[380px] flex flex-col">
             <h2 className="font-headline-md text-text-primary mb-6">Actual vs Predicted (+2h) Timeline</h2>
             <div className="flex-1 w-full min-h-0">
               <ResponsiveContainer width="100%" height="100%">
