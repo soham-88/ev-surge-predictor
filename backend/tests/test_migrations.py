@@ -242,3 +242,87 @@ def test_rbac_admin_allowed_operator_actions_viewer_denied(client: TestClient, v
     # Admin should succeed (200)
     resp_admin_sim = client.post("/api/v1/simulate", json=sim_payload, headers=admin_headers)
     assert resp_admin_sim.status_code == 200
+
+
+def test_dockerfile_and_dockerignore_include_migrations_and_alembic_ini():
+    """Assert backend/Dockerfile copies migrations and alembic.ini, and .dockerignore does not exclude them."""
+    from pathlib import Path
+    import fnmatch
+
+    backend_dir = Path(__file__).resolve().parent.parent
+    dockerfile_path = backend_dir / "Dockerfile"
+    dockerignore_path = backend_dir / ".dockerignore"
+
+    assert dockerfile_path.is_file(), f"Dockerfile not found at {dockerfile_path}"
+    dockerfile_content = dockerfile_path.read_text(encoding="utf-8")
+
+    # Assert COPY lines for alembic.ini and migrations exist
+    copy_lines = [
+        line.strip()
+        for line in dockerfile_content.splitlines()
+        if line.strip().startswith("COPY ")
+    ]
+    has_alembic_ini_copy = any("alembic.ini" in line for line in copy_lines)
+    has_migrations_copy = any("migrations" in line for line in copy_lines)
+
+    assert has_alembic_ini_copy, f"Dockerfile missing COPY instruction for alembic.ini. Found: {copy_lines}"
+    assert has_migrations_copy, f"Dockerfile missing COPY instruction for migrations/. Found: {copy_lines}"
+
+    # Assert .dockerignore does not exclude migrations or alembic.ini
+    if dockerignore_path.is_file():
+        patterns = [
+            line.strip()
+            for line in dockerignore_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        files_to_check = [
+            "alembic.ini",
+            "migrations",
+            "migrations/",
+            "migrations/env.py",
+            "migrations/script.py.mako",
+            "migrations/versions",
+            "migrations/versions/0001_baseline.py",
+            "migrations/versions/0002_stations_and_roles.py",
+        ]
+        for f in files_to_check:
+            for pat in patterns:
+                # Normalize directory matching
+                clean_pat = pat.rstrip("/")
+                clean_f = f.rstrip("/")
+                is_match = (
+                    fnmatch.fnmatch(clean_f, clean_pat)
+                    or fnmatch.fnmatch(clean_f, pat)
+                    or fnmatch.fnmatch(f, pat)
+                )
+                assert not is_match, f"File '{f}' is erroneously ignored by .dockerignore pattern '{pat}'"
+
+
+def test_run_migrations_from_arbitrary_cwd(monkeypatch, tmp_path):
+    """Assert run_migrations resolves paths and succeeds when process CWD is an arbitrary temporary directory."""
+    monkeypatch.chdir(tmp_path)
+    temp_db_file = tmp_path / "arbitrary_cwd.db"
+    db_url = f"sqlite:///{temp_db_file}"
+
+    run_migrations(db_url)
+    assert get_current_revision(db_url) == "0002_stations_and_roles"
+
+
+def test_get_alembic_config_raises_clear_error_if_paths_missing(monkeypatch, tmp_path):
+    """Assert get_alembic_config raises FileNotFoundError with clear searched directory and missing path info."""
+    from app.core import migration
+
+    # Point __file__ resolution to an empty directory
+    fake_migration_file = tmp_path / "app" / "core" / "migration.py"
+    fake_migration_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_migration_file.write_text("# fake", encoding="utf-8")
+
+    monkeypatch.setattr(migration, "__file__", str(fake_migration_file))
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        migration.get_alembic_config()
+
+    err_msg = str(exc_info.value)
+    assert "Alembic configuration file not found at" in err_msg
+    assert "Searched directory" in err_msg
+

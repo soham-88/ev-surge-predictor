@@ -11,9 +11,23 @@ logger = logging.getLogger(__name__)
 
 def get_alembic_config(db_url: str | None = None) -> Config:
     backend_dir = Path(__file__).resolve().parent.parent.parent
-    ini_path = backend_dir / "alembic.ini"
+    ini_path = (backend_dir / "alembic.ini").resolve()
+    migrations_dir = (backend_dir / "migrations").resolve()
+
+    if not ini_path.is_file():
+        raise FileNotFoundError(
+            f"Alembic configuration file not found at: '{ini_path}'. "
+            f"Searched directory: '{backend_dir}'."
+        )
+
+    if not migrations_dir.is_dir():
+        raise FileNotFoundError(
+            f"Alembic migrations directory not found at: '{migrations_dir}'. "
+            f"Searched directory: '{backend_dir}'."
+        )
+
     alembic_cfg = Config(str(ini_path))
-    alembic_cfg.set_main_option("script_location", str(backend_dir / "migrations"))
+    alembic_cfg.set_main_option("script_location", str(migrations_dir))
     target_url = db_url or app_config.DATABASE_URL
     alembic_cfg.set_main_option("sqlalchemy.url", target_url)
     return alembic_cfg

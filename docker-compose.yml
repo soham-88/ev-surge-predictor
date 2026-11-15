@@ -1,5 +1,3 @@
-version: '3.8'
-
 # NOTE: The default PostgreSQL credentials below are development-only defaults for local Docker evaluation.
 # In staging or production environments, set unique values via POSTGRES_USER, POSTGRES_PASSWORD,
 # POSTGRES_DB, and JWT_SECRET environment variables.
