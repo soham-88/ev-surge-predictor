@@ -232,20 +232,38 @@ class MLEngine:
 
         global_path = SAVED_MODELS_DIR / "global_shap_importance.joblib"
         if global_path.exists():
-            self._global_shap_cache = joblib.load(global_path)
+            cached = joblib.load(global_path)
+            cached.setdefault("n_samples", cached.get("sample_size", 200))
+            cached.setdefault("split_name", "test")
+            cached.setdefault("total_test_rows", self.training_metrics.get("n_test", 1726))
+            self._global_shap_cache = cached
             return self._global_shap_cache
 
-        sample_size = 200
+        total_test_rows = self.training_metrics.get("n_test", 1726)
+        n_train = self.training_metrics.get("n_train", 6902)
+        target_sample_size = 200
+        split_name = "test"
+        n_samples = 0
+
         try:
             from pipeline.train import synthesize_telemetry, engineer_features, FEATURE_COLUMNS
-            df_synth = synthesize_telemetry(n_days=14, seed=42)
-            df_feat = engineer_features(df_synth).dropna()
-            X_sample = self._scaler.transform(df_feat[FEATURE_COLUMNS].iloc[:sample_size])
+            df_raw = synthesize_telemetry(n_days=90, seed=42)
+            df_feat = engineer_features(df_raw)
+            df_test = df_feat.iloc[n_train:]
+            total_test_rows = len(df_test)
+            sample_count = min(target_sample_size, total_test_rows)
+            # Sample 200 rows deterministically with seed=42 from the held-out test split
+            indices = np.random.RandomState(42).choice(total_test_rows, size=sample_count, replace=False)
+            indices.sort()
+            sample_df = df_test.iloc[indices]
+            X_sample = self._scaler.transform(sample_df[FEATURE_COLUMNS])
+            n_samples = len(X_sample)
             vals = self._explainer.shap_values(X_sample)
             mean_abs = np.mean(np.abs(vals), axis=0)
         except Exception:
             mean_abs = np.array(self._model.feature_importances_)
-            sample_size = 1
+            n_samples = 1
+            total_test_rows = total_test_rows or 1
 
         total = float(np.sum(mean_abs)) if float(np.sum(mean_abs)) > 0 else 1.0
         items = []
@@ -264,7 +282,10 @@ class MLEngine:
 
         result = {
             "total_features": len(items),
-            "sample_size": sample_size,
+            "sample_size": n_samples,
+            "n_samples": n_samples,
+            "split_name": split_name,
+            "total_test_rows": total_test_rows,
             "feature_importances": items,
         }
         self._global_shap_cache = result

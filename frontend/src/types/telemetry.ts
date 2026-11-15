@@ -38,6 +38,9 @@ export interface GlobalFeatureImportanceItem {
 export interface GlobalExplainResponse {
   total_features: number;
   sample_size: number;
+  n_samples?: number;
+  split_name?: string;
+  total_test_rows?: number;
   feature_importances: GlobalFeatureImportanceItem[];
 }
 

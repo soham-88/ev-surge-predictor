@@ -61,6 +61,9 @@ async def explain_global(current_user: User = Depends(get_current_user)) -> Glob
     return GlobalExplainResponse(
         total_features=data["total_features"],
         sample_size=data["sample_size"],
+        n_samples=data.get("n_samples", data["sample_size"]),
+        split_name=data.get("split_name", "test"),
+        total_test_rows=data.get("total_test_rows"),
         feature_importances=[
             GlobalFeatureImportanceItem(
                 feature=item["feature"],
