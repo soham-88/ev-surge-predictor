@@ -69,3 +69,89 @@ def calculate_vehicle_adjusted_tariff(base_multiplier: float, vehicle_type: str)
             "vehicle_multiplier": fallback_info["multiplier"],
             "final_tariff_multiplier": round(1.0 * fallback_info["multiplier"], 3),
         }
+
+
+def get_tariff_curve_data() -> dict:
+    """
+    Computes tariff multipliers across 0-100% capacity utilization directly from
+    the optimizer surge and tariff policies, combined with vehicle category factors.
+    """
+    from app.models.optimizer import classify_surge, compute_tariff
+
+    bands = [
+        {
+            "name": "Normal",
+            "surge_status": "NORMAL",
+            "min_pct": 0.0,
+            "max_pct": 65.0,
+            "base_multiplier": compute_tariff("NORMAL", 0.0),
+            "multipliers": {
+                cat: calculate_vehicle_adjusted_tariff(compute_tariff("NORMAL", 0.0), cat)["final_tariff_multiplier"]
+                for cat in VEHICLE_TARIFF_TABLE
+            },
+        },
+        {
+            "name": "Warning",
+            "surge_status": "WARNING",
+            "min_pct": 65.0,
+            "max_pct": 80.0,
+            "base_multiplier": compute_tariff("WARNING", 65.0),
+            "multipliers": {
+                cat: calculate_vehicle_adjusted_tariff(compute_tariff("WARNING", 65.0), cat)["final_tariff_multiplier"]
+                for cat in VEHICLE_TARIFF_TABLE
+            },
+        },
+        {
+            "name": "Critical",
+            "surge_status": "CRITICAL",
+            "min_pct": 80.0,
+            "max_pct": 95.0,
+            "base_multiplier": compute_tariff("CRITICAL", 80.0),
+            "multipliers": {
+                cat: calculate_vehicle_adjusted_tariff(compute_tariff("CRITICAL", 80.0), cat)["final_tariff_multiplier"]
+                for cat in VEHICLE_TARIFF_TABLE
+            },
+        },
+        {
+            "name": "Severe",
+            "surge_status": "CRITICAL",
+            "min_pct": 95.0,
+            "max_pct": 100.0,
+            "base_multiplier": compute_tariff("CRITICAL", 95.0),
+            "multipliers": {
+                cat: calculate_vehicle_adjusted_tariff(compute_tariff("CRITICAL", 95.0), cat)["final_tariff_multiplier"]
+                for cat in VEHICLE_TARIFF_TABLE
+            },
+        },
+    ]
+
+    points = []
+    for pct in range(0, 101):
+        pct_float = float(pct)
+        surge = classify_surge(pct_float)
+        base_mult = compute_tariff(surge, pct_float)
+        points.append({
+            "utilization_pct": pct,
+            "surge_status": surge,
+            "base_multiplier": base_mult,
+            "two_wheeler": calculate_vehicle_adjusted_tariff(base_mult, "two_wheeler")["final_tariff_multiplier"],
+            "standard_4w": calculate_vehicle_adjusted_tariff(base_mult, "standard_4w")["final_tariff_multiplier"],
+            "fast_charging": calculate_vehicle_adjusted_tariff(base_mult, "fast_charging")["final_tariff_multiplier"],
+        })
+
+    categories = {
+        key: {
+            "key": key,
+            "label": info["label"],
+            "category_multiplier": info["multiplier"],
+            "avg_power_kw": info["avg_power_kw"],
+        }
+        for key, info in VEHICLE_TARIFF_TABLE.items()
+    }
+
+    return {
+        "bands": bands,
+        "points": points,
+        "categories": categories,
+    }
+

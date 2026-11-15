@@ -3,12 +3,15 @@ FastAPI Router for Vehicle-Adjusted Tariff endpoints.
 """
 
 from typing import Optional
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.core.security import get_current_user
+from app.models.user import User
 from app.services.vehicle_tariff import (
     VEHICLE_TARIFF_TABLE,
     calculate_vehicle_adjusted_tariff,
+    get_tariff_curve_data,
 )
 
 router = APIRouter(prefix="/api/v1/tariff", tags=["tariff"])
@@ -32,3 +35,10 @@ async def post_vehicle_adjusted(payload: VehicleAdjustedTariffRequest):
         base_multiplier=payload.base_surge_multiplier,
         vehicle_type=payload.vehicle_type,
     )
+
+
+@router.get("/curve")
+async def get_tariff_curve(current_user: User = Depends(get_current_user)):
+    """Retrieve dynamic tariff curve points and bands across 0-100% capacity utilization."""
+    return get_tariff_curve_data()
+

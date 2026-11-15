@@ -117,6 +117,38 @@ export interface BatchPredictResponse {
   download_url: string;
 }
 
+export interface TariffCurvePoint {
+  utilization_pct: number;
+  surge_status: 'NORMAL' | 'WARNING' | 'CRITICAL';
+  base_multiplier: number;
+  two_wheeler: number;
+  standard_4w: number;
+  fast_charging: number;
+}
+
+export interface TariffCurveBand {
+  name: string;
+  surge_status: 'NORMAL' | 'WARNING' | 'CRITICAL';
+  min_pct: number;
+  max_pct: number;
+  base_multiplier: number;
+  multipliers: Record<string, number>;
+}
+
+export interface TariffCategoryInfo {
+  key: string;
+  label: string;
+  category_multiplier: number;
+  avg_power_kw: number;
+}
+
+export interface TariffCurveResponse {
+  bands: TariffCurveBand[];
+  points: TariffCurvePoint[];
+  categories: Record<string, TariffCategoryInfo>;
+}
+
+
 export const FEATURE_READABLE_NAMES: Record<string, string> = {
   ambient_temp_c: 'Ambient Temperature',
   traffic_inflow_index: 'Traffic Inflow Index',
