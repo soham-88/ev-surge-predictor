@@ -42,6 +42,8 @@ def test_incidents_logged_on_surge_prediction(
     assert latest["surge_status"] in ("WARNING", "CRITICAL")
     assert latest["predicted_load_kw"] > 0
     assert latest["tariff_multiplier"] >= 1.0
+    assert latest["station_id"] is not None
+    assert latest["source"] == "LIVE"
 
 
 def test_viewer_cannot_delete_incidents(

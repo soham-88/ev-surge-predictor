@@ -167,6 +167,8 @@ class IncidentItem(BaseModel):
     throttled_bays_count: int
     shed_bays_count: int
     operator_username: Optional[str] = None
+    station_id: Optional[int] = None
+    source: Optional[str] = None
 
 
 class IncidentHistoryResponse(BaseModel):

@@ -22,14 +22,11 @@ def _seed_demo_accounts() -> None:
     filesystem on a free-tier host), the accounts are silently recreated.
     If they already exist, this is a no-op.
     """
-    from app.core.database import Base, engine as db_engine, SessionLocal
+    from app.core.database import SessionLocal
     from app.models.user import User
     from app.models.incident import Incident
     from app.core.security import hash_password
     from app.core import config
-
-    # Create tables if they don't exist yet
-    Base.metadata.create_all(bind=db_engine)
 
     db = SessionLocal()
     try:
@@ -56,9 +53,14 @@ def _seed_demo_accounts() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: load ML artifacts and ensure demo accounts exist."""
+    """Startup: run database migrations, load ML artifacts and ensure demo accounts exist."""
     from app.core import config
     config.check_jwt_secret_warning()
+
+    print("Applying database migrations ...")
+    from app.core.migration import run_migrations
+    run_migrations()
+    print("Database migrations applied.")
 
     print("Loading ML model artifacts ...")
     engine.load()
@@ -99,4 +101,26 @@ app.include_router(tariff.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "ev-surge-predictor"}
+    from sqlalchemy import text
+    from app.core.database import SessionLocal
+    from app.core.migration import get_current_revision
+
+    db_status = "error"
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception as e:
+        print(f"Health database check failed: {e}")
+        db_status = "error"
+    finally:
+        db.close()
+
+    revision = get_current_revision()
+
+    return {
+        "status": "ok",
+        "service": "ev-surge-predictor",
+        "database": db_status,
+        "migration_revision": revision,
+    }

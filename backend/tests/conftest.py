@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import sys
+import os
+import sys
+import tempfile
 from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
@@ -13,25 +16,35 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.main import app
-from app.core.database import Base
+from app.core import config as app_config
+from app.core.database import SessionLocal as AppSessionLocal
+from app.core.migration import run_migrations
 from app.core.security import get_db, hash_password
 from app.models.user import User
 from app.models.ml_engine import engine as ml_engine
 
-# In-memory SQLite engine for tests
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+# Temporary SQLite file created by running migrations
+_temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_temp_db.close()
+TEST_DB_PATH = _temp_db.name
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{TEST_DB_PATH}"
 
 test_engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    Base.metadata.create_all(bind=test_engine)
+    # Update app configuration to point to test database
+    app_config.DATABASE_URL = SQLALCHEMY_DATABASE_URL
+    AppSessionLocal.configure(bind=test_engine)
+
+    # Initialize schema strictly via Alembic migrations (no create_all)
+    run_migrations(SQLALCHEMY_DATABASE_URL)
+
     db = TestingSessionLocal()
     try:
         # Seed test users
@@ -64,7 +77,12 @@ def setup_test_db():
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=test_engine)
+    test_engine.dispose()
+    try:
+        if os.path.exists(TEST_DB_PATH):
+            os.unlink(TEST_DB_PATH)
+    except Exception:
+        pass
 
 
 @pytest.fixture
