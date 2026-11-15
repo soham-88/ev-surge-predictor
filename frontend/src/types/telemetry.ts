@@ -54,6 +54,8 @@ export interface IncidentItem {
   throttled_bays_count: number;
   shed_bays_count: number;
   operator_username?: string | null;
+  station_id?: number;
+  source?: string;
 }
 
 export interface IncidentHistoryResponse {

@@ -40,6 +40,7 @@ def _log_incident_if_needed(
     try:
         from app.core.database import SessionLocal
         from app.models.incident import Incident
+        from app.models.station import Station
 
         db = SessionLocal()
         try:
@@ -50,7 +51,10 @@ def _log_incident_if_needed(
                 .first()
             )
             if not recent:
+                default_station = db.query(Station).filter(Station.code == "MUM-01").first()
+                station_id = default_station.id if default_station else 1
                 incident = Incident(
+                    station_id=station_id,
                     surge_status=surge_status,
                     predicted_load_kw=round(predicted_load_kw, 1),
                     capacity_utilization_pct=round(capacity_utilization_pct, 1),
@@ -58,13 +62,14 @@ def _log_incident_if_needed(
                     throttled_bays_count=throttled_count,
                     shed_bays_count=shed_count,
                     operator_username=operator_username,
+                    source="LIVE",
                 )
                 db.add(incident)
                 db.commit()
         finally:
             db.close()
     except Exception as e:
-        logger.warning(f"Failed to record incident to SQLite: {e}")
+        logger.warning(f"Failed to record incident: {e}")
 
 
 @router.post("/predict", response_model=PredictResponse)

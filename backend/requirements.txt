@@ -8,6 +8,8 @@ pydantic_core==2.46.4
 
 # Database & ORM
 SQLAlchemy==2.0.52
+alembic>=1.13.0
+psycopg[binary]>=3.2.0
 
 # Authentication & Security
 passlib==1.7.4

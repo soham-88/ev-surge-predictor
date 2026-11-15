@@ -55,6 +55,47 @@ jobs:
       - name: Run Vitest
         run: npm test
 
+  migrations-postgres:
+    name: Database Migrations (Postgres 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: grid_pulse
+          POSTGRES_PASSWORD: grid_pulse_dev_password
+          POSTGRES_DB: ev_surge_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r backend/requirements.txt
+
+      - name: Test Alembic migrations against Postgres
+        env:
+          DATABASE_URL: postgresql+psycopg://grid_pulse:grid_pulse_dev_password@localhost:5432/ev_surge_db
+        run: |
+          cd backend
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
   docker:
     name: Docker Compose Integration Verification
     runs-on: ubuntu-latest
