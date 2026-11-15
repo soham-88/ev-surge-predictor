@@ -80,6 +80,9 @@ class GlobalExplainResponse(BaseModel):
     """Global TreeSHAP feature importances across baseline distribution."""
     total_features: int
     sample_size: int
+    n_samples: int = Field(200, description="Number of baseline samples evaluated")
+    split_name: str = Field("test", description="Dataset split evaluated (e.g. test)")
+    total_test_rows: Optional[int] = Field(None, description="Total rows in held-out test split")
     feature_importances: List[GlobalFeatureImportanceItem]
 
 

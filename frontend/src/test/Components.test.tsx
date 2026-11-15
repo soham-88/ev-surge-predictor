@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { StallGrid } from '../components/Dashboard/StallGrid';
 import { ShapWaterfall, computeWaterfallDomain } from '../components/Dashboard/ShapWaterfall';
+import { GlobalShapImportance, summarizeGlobalImportance } from '../components/Dashboard/GlobalShapImportance';
+import { api } from '../services/api';
 import { getFeatureReadableName } from '../types/telemetry';
 
 // Mock animejs for StallGrid's pulse animation
@@ -163,6 +165,110 @@ describe('Dashboard Visual Components', () => {
         expect(maxDomain).toBeGreaterThan(minDomain);
         expect(minDomain % 5).toBe(0);
         expect(maxDomain % 5).toBe(0);
+      });
+    });
+  });
+
+  describe('GlobalShapImportance & summarizeGlobalImportance', () => {
+    const mockGlobalFeatureImportances = [
+      { feature: 'hour_cos', mean_abs_shap_kw: 32.257, importance_pct: 44.4, rank: 1 },
+      { feature: 'hour_sin', mean_abs_shap_kw: 22.192, importance_pct: 30.5, rank: 2 },
+      { feature: 'day_sin', mean_abs_shap_kw: 8.422, importance_pct: 11.6, rank: 3 },
+      { feature: 'traffic_inflow_index', mean_abs_shap_kw: 2.18, importance_pct: 3.0, rank: 4 },
+      { feature: 'load_lag_60m', mean_abs_shap_kw: 1.38, importance_pct: 1.9, rank: 5 },
+      { feature: 'rolling_mean_60m', mean_abs_shap_kw: 1.23, importance_pct: 1.7, rank: 6 },
+      { feature: 'ambient_temp_c', mean_abs_shap_kw: 1.23, importance_pct: 1.7, rank: 7 },
+      { feature: 'load_lag_15m', mean_abs_shap_kw: 0.94, importance_pct: 1.3, rank: 8 },
+      { feature: 'load_lag_45m', mean_abs_shap_kw: 0.65, importance_pct: 0.9, rank: 9 },
+      { feature: 'rolling_std_60m', mean_abs_shap_kw: 0.58, importance_pct: 0.8, rank: 10 },
+      { feature: 'load_lag_30m', mean_abs_shap_kw: 0.44, importance_pct: 0.6, rank: 11 },
+      { feature: 'grid_frequency_hz', mean_abs_shap_kw: 0.36, importance_pct: 0.5, rank: 12 },
+      { feature: 'plug_delta_15m', mean_abs_shap_kw: 0.29, importance_pct: 0.4, rank: 13 },
+      { feature: 'active_plugs', mean_abs_shap_kw: 0.29, importance_pct: 0.4, rank: 14 },
+      { feature: 'day_cos', mean_abs_shap_kw: 0.15, importance_pct: 0.2, rank: 15 },
+    ];
+
+    describe('summarizeGlobalImportance pure function', () => {
+      it('calculates category totals that sum to approximately 100%', () => {
+        const summary = summarizeGlobalImportance(mockGlobalFeatureImportances);
+
+        const totalPctSum = summary.categoryList.reduce((acc, cat) => acc + cat.sharePct, 0);
+        expect(totalPctSum).toBeGreaterThanOrEqual(98.0);
+        expect(totalPctSum).toBeLessThanOrEqual(102.0);
+
+        // Check specific categories
+        expect(summary.categoryTotals.Temporal.sharePct).toBe(86.7);
+        expect(summary.categoryTotals.Historical.sharePct).toBe(7.2);
+        expect(summary.categoryTotals.Physical.sharePct).toBe(3.8);
+        expect(summary.categoryTotals.Weather.sharePct).toBe(1.7);
+        expect(summary.categoryTotals.Grid.sharePct).toBe(0.5);
+      });
+
+      it('identifies dominant driver and top-3 share correctly', () => {
+        const summary = summarizeGlobalImportance(mockGlobalFeatureImportances);
+
+        expect(summary.dominantFeature).not.toBeNull();
+        expect(summary.dominantFeature?.feature).toBe('hour_cos');
+        expect(summary.dominantFeature?.name).toBe('Hour Cycle (cos)');
+        expect(summary.dominantFeature?.sharePct).toBe(44.4);
+
+        // Top 3 = 44.4 + 30.5 + 11.6 = 86.5%
+        expect(summary.top3SharePct).toBe(86.5);
+        expect(summary.temporalCombinedSharePct).toBe(86.7);
+      });
+
+      it('generates a truthful insight sentence containing exact API data and no forbidden terms', () => {
+        const summary = summarizeGlobalImportance(mockGlobalFeatureImportances);
+
+        expect(summary.insightSentence).toContain('86.7%');
+        expect(summary.insightSentence).toContain('7.2%');
+        expect(summary.insightSentence).toContain('1.7%');
+        expect(summary.insightSentence.toLowerCase()).not.toContain('variance');
+      });
+
+      it('handles empty feature importances safely', () => {
+        const summary = summarizeGlobalImportance([]);
+        expect(summary.dominantFeature).toBeNull();
+        expect(summary.top3SharePct).toBe(0);
+        expect(summary.temporalCombinedSharePct).toBe(0);
+        expect(summary.categoryList).toHaveLength(5);
+      });
+    });
+
+    describe('GlobalShapImportance component rendering', () => {
+      it('renders the header, summary chips, caveat, and accessible sr-only table', async () => {
+        const mockApiResponse = {
+          total_features: 15,
+          sample_size: 200,
+          n_samples: 200,
+          split_name: 'test',
+          total_test_rows: 1726,
+          feature_importances: mockGlobalFeatureImportances,
+        };
+
+        vi.spyOn(api, 'explainGlobal').mockResolvedValueOnce(mockApiResponse);
+
+        render(<GlobalShapImportance />);
+
+        // Header check
+        expect(await screen.findByText('Global Feature Importance')).toBeInTheDocument();
+        expect(screen.getAllByText(/held-out test split \(1,726 rows\)/).length).toBeGreaterThan(0);
+
+        // Summary chips check
+        expect(screen.getByText('Dominant Driver')).toBeInTheDocument();
+        expect(screen.getByText('44.4% share')).toBeInTheDocument();
+        expect(screen.getByText('Temporal Share')).toBeInTheDocument();
+        expect(screen.getByText('Top-3 Combined')).toBeInTheDocument();
+        expect(screen.getByText('Sample Size')).toBeInTheDocument();
+        expect(screen.getByText('N = 200 (test)')).toBeInTheDocument();
+
+        // Caveat check
+        expect(screen.getByText(/Training data is synthetic and strongly periodic/)).toBeInTheDocument();
+
+        // Accessible SR table check & Chart tick labels check
+        expect(screen.getByText('Tabular Summary of Global Feature Importance (TreeSHAP)')).toBeInTheDocument();
+        expect(screen.getAllByText('Hour Cycle (cos)').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Ambient Temperature').length).toBeGreaterThan(0);
       });
     });
   });

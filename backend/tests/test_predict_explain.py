@@ -128,7 +128,19 @@ def test_explain_global_endpoint(
 
     assert data["total_features"] == 15
     assert len(data["feature_importances"]) == 15
-    assert data["sample_size"] > 0
+
+    # Verify against real engine source
+    from app.models.ml_engine import engine
+    engine_data = engine.get_global_shap_importance()
+
+    assert data["sample_size"] == engine_data["sample_size"]
+    assert data["n_samples"] == engine_data["n_samples"]
+    assert data["n_samples"] == 200
+    assert data["split_name"] == engine_data["split_name"]
+    assert data["split_name"] == "test"
+    if "total_test_rows" in engine_data and engine_data["total_test_rows"] is not None:
+        assert data["total_test_rows"] == engine_data["total_test_rows"]
+        assert data["total_test_rows"] == 1726
 
     importances = data["feature_importances"]
     # Check ranks 1 to 15 strictly ascending
