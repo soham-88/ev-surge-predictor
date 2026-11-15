@@ -1,4 +1,4 @@
-import type { PredictResponse, ExplainResponse, GlobalExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse, IncidentHistoryResponse } from '../types/telemetry';
+import type { PredictResponse, ExplainResponse, GlobalExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse, IncidentHistoryResponse, TariffCurveResponse } from '../types/telemetry';
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const API_BASE_URL = RAW_API_URL.endsWith('/api/v1')
@@ -228,6 +228,12 @@ export const api = {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  },
+
+  async getTariffCurve(): Promise<TariffCurveResponse> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/tariff/curve`);
+    if (!response.ok) throw new Error('Failed to fetch tariff curve');
+    return await response.json();
   }
 };
 
