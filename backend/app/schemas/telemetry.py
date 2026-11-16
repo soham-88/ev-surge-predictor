@@ -48,6 +48,7 @@ class PredictResponse(BaseModel):
     inference_latency_ms: float
     lower_bound_kw: float = Field(..., description="Empirical 10th percentile load bound (kW)")
     upper_bound_kw: float = Field(..., description="Empirical 90th percentile load bound (kW)")
+    station_local_time: Optional[str] = Field(None, description="Station-local ISO timestamp corresponding to forecast inputs")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 SURGE_TELEMETRY = {
-    "timestamp": "2026-10-28T14:00:00Z",
+    "timestamp": "2026-10-28T12:00:00Z",
     "ambient_temp_c": 42.0,
     "traffic_inflow_index": 95,
     "active_plugs": 8,

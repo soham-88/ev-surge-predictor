@@ -14,6 +14,7 @@ export interface PredictResponse {
   inference_latency_ms: number;
   lower_bound_kw?: number;
   upper_bound_kw?: number;
+  station_local_time?: string;
 }
 
 export interface Attribution {
