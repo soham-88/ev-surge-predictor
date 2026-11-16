@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from app.core.security import get_current_user
 from app.models.user import User
-
+from app.core.timezone import to_station_local
 from app.models.ml_engine import engine
 from app.schemas.telemetry import (
     Attribution,
@@ -25,8 +25,9 @@ router = APIRouter()
 async def explain_prediction(req: PredictRequest, current_user: User = Depends(get_current_user)) -> ExplainResponse:
     """Compute TreeSHAP attributions for the given telemetry snapshot."""
 
-    hour = req.timestamp.hour + req.timestamp.minute / 60.0
-    day_of_week = req.timestamp.weekday()
+    local_ts = to_station_local(req.timestamp)
+    hour = local_ts.hour + local_ts.minute / 60.0
+    day_of_week = local_ts.weekday()
 
     predicted_load_kw, _, scaled_features = engine.predict(
         ambient_temp_c=req.ambient_temp_c,

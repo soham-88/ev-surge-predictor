@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from app.core.config import SAVED_MODELS_DIR
+from app.core.timezone import to_station_local
 
 
 class MLEngine:
@@ -75,7 +76,7 @@ class MLEngine:
         """
         # 1. Cyclical time encoding
         if 'timestamp' in df.columns:
-            timestamps = pd.to_datetime(df['timestamp'])
+            timestamps = to_station_local(df['timestamp'])
             hour = timestamps.dt.hour + timestamps.dt.minute / 60.0
             day_of_week = timestamps.dt.dayofweek
         else:

@@ -10,6 +10,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 
 from app.core.config import TRANSFORMER_CAPACITY_KW
+from app.core.timezone import to_station_local
 from app.models.ml_engine import engine
 from app.models.optimizer import compute_mitigations
 from app.schemas.telemetry import (
@@ -76,8 +77,9 @@ def _log_incident_if_needed(
 async def predict_surge(req: PredictRequest, current_user: User = Depends(get_current_user)) -> PredictResponse:
     """Run XGBoost inference and return load forecast + mitigation policy."""
 
-    hour = req.timestamp.hour + req.timestamp.minute / 60.0
-    day_of_week = req.timestamp.weekday()
+    local_ts = to_station_local(req.timestamp)
+    hour = local_ts.hour + local_ts.minute / 60.0
+    day_of_week = local_ts.weekday()
 
     # Use the client-provided ambient temperature directly to guarantee consistency
     # with the TreeSHAP /explain endpoint and historical evaluations.
@@ -120,4 +122,5 @@ async def predict_surge(req: PredictRequest, current_user: User = Depends(get_cu
         inference_latency_ms=round(latency_ms, 1),
         lower_bound_kw=lower_bound_kw,
         upper_bound_kw=upper_bound_kw,
+        station_local_time=local_ts.isoformat(),
     )
