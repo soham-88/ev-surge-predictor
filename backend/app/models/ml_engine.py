@@ -6,6 +6,7 @@ prediction + SHAP explanation methods for the FastAPI endpoints.
 from __future__ import annotations
 
 import time
+import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
@@ -13,8 +14,11 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from app.core import config as app_config
 from app.core.config import SAVED_MODELS_DIR, BACKEND_DIR
 from app.core.timezone import to_station_local
+
+logger = logging.getLogger(__name__)
 
 
 def assemble_features_df(
@@ -135,37 +139,69 @@ class MLEngine:
         self._global_shap_cache: Dict[str, Any] | None = None
         self._loaded = False
 
-    def load(self) -> None:
+    def load(self, force_reload: bool = False) -> None:
         """Load all .joblib artifacts from disk and run startup validation."""
-        if self._loaded:
+        if self._loaded and not force_reload:
             return
 
-        model_path = SAVED_MODELS_DIR / "xgboost_model.joblib"
+        models_dir = getattr(app_config, "SAVED_MODELS_DIR", SAVED_MODELS_DIR)
+
+        model_path = models_dir / "xgboost_model.joblib"
         if not model_path.exists():
             raise FileNotFoundError(
-                f"Model artifacts not found at {SAVED_MODELS_DIR}. "
+                f"Model artifacts not found at {models_dir}. "
                 "Run `python -m backend.pipeline.train` first."
             )
 
         self._model = joblib.load(model_path)
         
-        how_path = SAVED_MODELS_DIR / "hour_of_week_mean.joblib"
+        how_path = models_dir / "hour_of_week_mean.joblib"
         if not how_path.exists():
             raise FileNotFoundError(f"Hour-of-week table not found at {how_path}.")
         self._how_table = joblib.load(how_path)
 
-        self._feature_names = joblib.load(SAVED_MODELS_DIR / "feature_names.joblib")
+        self._feature_names = joblib.load(models_dir / "feature_names.joblib")
 
-        shap_path = SAVED_MODELS_DIR / "shap_explainer.joblib"
+        # Startup validation: fail fast with clear messages
+        if len(self._feature_names) != self._model.n_features_in_:
+            raise ValueError(
+                f"Feature count mismatch: {len(self._feature_names)} feature names loaded, "
+                f"but model expects {self._model.n_features_in_} features."
+            )
+
+        shap_path = models_dir / "shap_explainer.joblib"
+        self._explainer = None
         if shap_path.exists():
-            self._explainer = joblib.load(shap_path)
-        else:
+            try:
+                candidate_exp = joblib.load(shap_path)
+                test_shap = candidate_exp.shap_values(np.zeros((1, len(self._feature_names))))
+                if test_shap.shape[1] == len(self._feature_names):
+                    self._explainer = candidate_exp
+                else:
+                    logger.warning(
+                        f"Stored shap_explainer feature count ({test_shap.shape[1]}) != {len(self._feature_names)}; "
+                        "building in-memory TreeExplainer."
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Stored shap_explainer.joblib unreadable or invalid ({e}); "
+                    "building in-memory TreeExplainer."
+                )
+
+        if self._explainer is None:
+            logger.warning(
+                "shap_explainer.joblib missing or unavailable; building in-memory TreeExplainer from XGBoost model."
+            )
             import shap
             self._explainer = shap.TreeExplainer(self._model)
 
-        self._training_metrics = joblib.load(SAVED_MODELS_DIR / "training_metrics.joblib")
+        metrics_path = models_dir / "training_metrics.joblib"
+        if metrics_path.exists():
+            self._training_metrics = joblib.load(metrics_path)
+        else:
+            self._training_metrics = {}
 
-        cal_path = SAVED_MODELS_DIR / "interval_calibration.joblib"
+        cal_path = models_dir / "interval_calibration.joblib"
         if cal_path.exists():
             self._interval_calibration = joblib.load(cal_path)
         else:
@@ -175,13 +211,6 @@ class MLEngine:
                 "coverage": 0.797,
                 "n_test": 9210,
             }
-
-        # Startup validation: fail fast with clear messages
-        if len(self._feature_names) != self._model.n_features_in_:
-            raise ValueError(
-                f"Feature count mismatch: {len(self._feature_names)} feature names loaded, "
-                f"but model expects {self._model.n_features_in_} features."
-            )
 
         try:
             test_shap = self._explainer.shap_values(np.zeros((1, len(self._feature_names))))
@@ -373,7 +402,8 @@ class MLEngine:
         if self._global_shap_cache is not None:
             return self._global_shap_cache
 
-        global_path = SAVED_MODELS_DIR / "global_shap_importance.joblib"
+        models_dir = getattr(app_config, "SAVED_MODELS_DIR", SAVED_MODELS_DIR)
+        global_path = models_dir / "global_shap_importance.joblib"
         if global_path.exists():
             cached = joblib.load(global_path)
             cached.setdefault("n_samples", cached.get("sample_size", 200))

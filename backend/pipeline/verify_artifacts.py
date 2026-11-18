@@ -59,7 +59,6 @@ def verify_artifacts() -> bool:
     print("\n[1/7] Checking Artifact Existence & Dimension Agreement ...")
     required_files = [
         "xgboost_model.joblib",
-        "shap_explainer.joblib",
         "global_shap_importance.joblib",
         "training_metrics.joblib",
         "lstm_metrics.joblib",
@@ -78,7 +77,21 @@ def verify_artifacts() -> bool:
             return False
 
     model_xgb = joblib.load(SAVED_MODELS_DIR / "xgboost_model.joblib")
-    explainer = joblib.load(SAVED_MODELS_DIR / "shap_explainer.joblib")
+
+    shap_path = SAVED_MODELS_DIR / "shap_explainer.joblib"
+    if shap_path.exists():
+        try:
+            explainer = joblib.load(shap_path)
+            print("  • SHAP explainer       : present on disk (loaded from file)")
+        except Exception as e:
+            import shap
+            explainer = shap.TreeExplainer(model_xgb)
+            print(f"  • SHAP explainer       : unreadable ({e}), built in-memory via TreeExplainer")
+    else:
+        import shap
+        explainer = shap.TreeExplainer(model_xgb)
+        print("  • SHAP explainer       : missing (will be built at startup)")
+
     global_shap = joblib.load(SAVED_MODELS_DIR / "global_shap_importance.joblib")
     training_metrics = joblib.load(SAVED_MODELS_DIR / "training_metrics.joblib")
     lstm_metrics = joblib.load(SAVED_MODELS_DIR / "lstm_metrics.joblib")
@@ -101,7 +114,10 @@ def verify_artifacts() -> bool:
     dim_global_shap = global_shap["total_features"] == 17 and len(global_shap["feature_importances"]) == 17
     dim_how = len(how_table) == 168
 
-    c1_pass = dim_xgb and dim_fnames and dim_scaler_lstm and dim_config and dim_global_shap and dim_how
+    test_dummy = explainer.shap_values(np.zeros((1, 17)))
+    dim_explainer = test_dummy.shape[1] == 17
+
+    c1_pass = dim_xgb and dim_fnames and dim_scaler_lstm and dim_config and dim_global_shap and dim_how and dim_explainer
     print(f"  • XGBoost features     : {model_xgb.n_features_in_} (expected 17)")
     print(f"  • Feature names count  : {len(feature_names)} (expected 17)")
     print(f"  • LSTM input size      : {lstm_config['input_size']} (expected 17)")

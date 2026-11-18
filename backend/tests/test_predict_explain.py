@@ -290,5 +290,54 @@ def test_assemble_features_df_how_none_returns_15_cols():
     assert len(feats.columns) == 15, f"Expected 15 columns for how_table=None, got {len(feats.columns)}"
 
 
+def test_explain_without_shap_explainer_artifact(monkeypatch, tmp_path):
+    """Verify that MLEngine falls back to building in-memory TreeExplainer when shap_explainer.joblib is absent."""
+    import shutil
+    from pathlib import Path
+    import pandas as pd
+    from app.core import config as app_config
+    from app.models import ml_engine as ml_engine_module
+    from app.models.ml_engine import MLEngine
+
+    saved_models_dir = Path(__file__).resolve().parent.parent / "saved_models"
+    for item in saved_models_dir.iterdir():
+        if item.is_file() and item.name != "shap_explainer.joblib":
+            shutil.copy2(item, tmp_path / item.name)
+
+    assert not (tmp_path / "shap_explainer.joblib").exists()
+    assert (tmp_path / "xgboost_model.joblib").exists()
+
+    monkeypatch.setattr(app_config, "SAVED_MODELS_DIR", tmp_path)
+    monkeypatch.setattr(ml_engine_module, "SAVED_MODELS_DIR", tmp_path)
+
+    test_engine = MLEngine()
+    test_engine.load()
+
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "v2_test_sample.csv"
+    df = pd.read_csv(fixture_path)
+    row = df.iloc[0]
+    ts = pd.to_datetime(row["timestamp"])
+    lags = [float(row["load_lag_15m"]), float(row["load_lag_30m"]), float(row["load_lag_45m"]), float(row["load_lag_60m"])]
+
+    pred, _, raw_features = test_engine.predict(
+        ambient_temp_c=float(row["ambient_temp_c"]),
+        traffic_inflow_index=int(row["traffic_inflow_index"]),
+        active_plugs=int(row["active_plugs"]),
+        grid_frequency_hz=float(row["grid_frequency_hz"]),
+        load_lags_kw=lags,
+        hour=float(ts.hour + ts.minute / 60.0),
+        day_of_week=int(ts.weekday()),
+        timestamp=ts,
+    )
+
+    base, attributions = test_engine.explain(raw_features)
+
+    assert len(attributions) == 17
+    sum_shap = sum(a["shap_delta_kw"] for a in attributions)
+    err = abs((base + sum_shap) - pred)
+    assert err < 1e-3, f"SHAP additivity violated without joblib file: base={base}, sum={sum_shap}, pred={pred}, err={err}"
+
+
+
 
 
