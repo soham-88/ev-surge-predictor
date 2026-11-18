@@ -17,6 +17,111 @@ from app.core.config import SAVED_MODELS_DIR
 from app.core.timezone import to_station_local
 
 
+def assemble_features_df(
+    df: pd.DataFrame,
+    is_batch: bool = False,
+    how_table: Any = None,
+    feature_names: List[str] | None = None,
+    prev_active_plugs: int | float | None = None,
+) -> pd.DataFrame:
+    """Build the feature dataframe matching FEATURE_COLUMNS (15) or v2 (17).
+
+    Shared logic for training, single-row (live), and multi-row (batch) predictions.
+    If how_table is None: returns the 15-element feature dataframe, preserving existing behavior.
+    If how_table is provided: adds two derived features (load_anomaly, lag_trend) using
+    station-local time via to_station_local:
+      - load_anomaly = lag_15 - HoW(t - 15 min)
+      - lag_trend = lag_15 - lag_60
+    """
+    # 1. Cyclical time encoding
+    if "timestamp" in df.columns:
+        timestamps = to_station_local(df["timestamp"])
+        hour = timestamps.dt.hour + timestamps.dt.minute / 60.0
+        day_of_week = timestamps.dt.dayofweek
+    else:
+        timestamps = None
+        hour = df["hour"]
+        day_of_week = df["day_of_week"]
+
+    hour_sin = np.sin(2 * np.pi * hour / 24)
+    hour_cos = np.cos(2 * np.pi * hour / 24)
+    day_sin = np.sin(2 * np.pi * day_of_week / 7)
+    day_cos = np.cos(2 * np.pi * day_of_week / 7)
+
+    # 2. Rolling features
+    lags_df = df[["load_lag_15m", "load_lag_30m", "load_lag_45m", "load_lag_60m"]]
+    rolling_mean_60m = lags_df.mean(axis=1)
+    rolling_std_60m = lags_df.std(axis=1, ddof=1)
+
+    # 3. Plug delta
+    if how_table is not None:
+        if is_batch:
+            plug_delta_15m = df["active_plugs"].diff(1).fillna(0)
+        else:
+            if prev_active_plugs is not None:
+                plug_delta_15m = (df["active_plugs"] - float(prev_active_plugs)).astype(float)
+            else:
+                plug_delta_15m = 0.0
+    else:
+        if is_batch:
+            plug_delta_15m = df["active_plugs"].diff(1).fillna(0)
+        else:
+            plug_delta_15m = (df["active_plugs"] - 4).clip(lower=0)
+
+    # 4. Assemble in exact order
+    features_dict = {
+        "ambient_temp_c": df["ambient_temp_c"],
+        "traffic_inflow_index": df["traffic_inflow_index"],
+        "active_plugs": df["active_plugs"],
+        "grid_frequency_hz": df["grid_frequency_hz"],
+        "load_lag_15m": df["load_lag_15m"],
+        "load_lag_30m": df["load_lag_30m"],
+        "load_lag_45m": df["load_lag_45m"],
+        "load_lag_60m": df["load_lag_60m"],
+        "rolling_mean_60m": rolling_mean_60m,
+        "rolling_std_60m": rolling_std_60m,
+        "plug_delta_15m": plug_delta_15m,
+        "hour_sin": hour_sin,
+        "hour_cos": hour_cos,
+        "day_sin": day_sin,
+        "day_cos": day_cos,
+    }
+
+    if how_table is not None:
+        from pipeline.generator_v2 import lookup_hour_of_week_mean
+
+        if timestamps is not None:
+            ts_minus_15 = timestamps - pd.Timedelta(minutes=15)
+            how_m15 = lookup_hour_of_week_mean(how_table, ts_minus_15)
+        else:
+            # Single-row or batch without timestamp: construct station-local reference
+            ref_dt = pd.to_datetime("2025-01-06 00:00:00")  # Monday
+            h_vals = np.asarray(hour, dtype=np.float64)
+            d_vals = np.asarray(day_of_week, dtype=np.int32)
+            ts_arr = [
+                ref_dt + pd.Timedelta(days=int(d), minutes=float(h * 60.0) - 15.0)
+                for d, h in zip(d_vals, h_vals)
+            ]
+            how_m15 = lookup_hour_of_week_mean(how_table, pd.Series(ts_arr))
+
+        features_dict["load_anomaly"] = df["load_lag_15m"] - how_m15
+        features_dict["lag_trend"] = df["load_lag_15m"] - df["load_lag_60m"]
+
+    features_df = pd.DataFrame(features_dict)
+
+    if how_table is None:
+        if feature_names:
+            return features_df[feature_names]
+        return features_df
+
+    target_cols = (
+        feature_names + ["load_anomaly", "lag_trend"]
+        if feature_names and "load_anomaly" not in feature_names
+        else (feature_names if feature_names else list(features_dict.keys()))
+    )
+    return features_df[target_cols]
+
+
 class MLEngine:
     """Singleton-style ML engine that lazily loads model artifacts."""
 
@@ -66,63 +171,26 @@ class MLEngine:
     # ── Feature Assembly ──────────────────────────────────────
 
     def _assemble_features_df(
-        self, df: pd.DataFrame, is_batch: bool = False
+        self,
+        df: pd.DataFrame,
+        is_batch: bool = False,
+        how_table: Any = None,
+        prev_active_plugs: int | float | None = None,
     ) -> pd.DataFrame:
-        """Build the 15-element feature dataframe matching train.py FEATURE_COLUMNS.
-        
-        Shared logic for both single-row (live) and multi-row (batch) predictions.
-        Where paths diverge (e.g. plug_delta_15m needing consecutive rows for diff),
-        it branches explicitly on `is_batch`.
+        """Build the feature dataframe.
+
+        If how_table is None: returns the 15-element feature dataframe matching
+        train.py FEATURE_COLUMNS, preserving exact existing behavior.
+        If how_table is provided: adds two derived features (load_anomaly, lag_trend)
+        using station-local time via to_station_local, producing 17 features total.
         """
-        # 1. Cyclical time encoding
-        if 'timestamp' in df.columns:
-            timestamps = to_station_local(df['timestamp'])
-            hour = timestamps.dt.hour + timestamps.dt.minute / 60.0
-            day_of_week = timestamps.dt.dayofweek
-        else:
-            hour = df['hour']
-            day_of_week = df['day_of_week']
-
-        hour_sin = np.sin(2 * np.pi * hour / 24)
-        hour_cos = np.cos(2 * np.pi * hour / 24)
-        day_sin = np.sin(2 * np.pi * day_of_week / 7)
-        day_cos = np.cos(2 * np.pi * day_of_week / 7)
-
-        # 2. Rolling features
-        lags_df = df[['load_lag_15m', 'load_lag_30m', 'load_lag_45m', 'load_lag_60m']]
-        rolling_mean_60m = lags_df.mean(axis=1)
-        # Using ddof=1 to match pandas default in train.py. If a single row, 
-        # lags_df.std(axis=1) across the 4 lag columns still works correctly.
-        rolling_std_60m = lags_df.std(axis=1, ddof=1)
-
-        # 3. Plug delta
-        if is_batch:
-            # Batch has consecutive rows, so we can diff exactly
-            plug_delta_15m = df["active_plugs"].diff(1).fillna(0)
-        else:
-            # Single-row live prediction lacks history, use heuristic
-            plug_delta_15m = (df["active_plugs"] - 4).clip(lower=0)
-
-        # 4. Assemble in exact order
-        features_df = pd.DataFrame({
-            "ambient_temp_c": df["ambient_temp_c"],
-            "traffic_inflow_index": df["traffic_inflow_index"],
-            "active_plugs": df["active_plugs"],
-            "grid_frequency_hz": df["grid_frequency_hz"],
-            "load_lag_15m": df["load_lag_15m"],
-            "load_lag_30m": df["load_lag_30m"],
-            "load_lag_45m": df["load_lag_45m"],
-            "load_lag_60m": df["load_lag_60m"],
-            "rolling_mean_60m": rolling_mean_60m,
-            "rolling_std_60m": rolling_std_60m,
-            "plug_delta_15m": plug_delta_15m,
-            "hour_sin": hour_sin,
-            "hour_cos": hour_cos,
-            "day_sin": day_sin,
-            "day_cos": day_cos,
-        })
-        
-        return features_df[self._feature_names]
+        return assemble_features_df(
+            df=df,
+            is_batch=is_batch,
+            how_table=how_table,
+            feature_names=self._feature_names,
+            prev_active_plugs=prev_active_plugs,
+        )
 
     # ── Prediction ────────────────────────────────────────────
 
