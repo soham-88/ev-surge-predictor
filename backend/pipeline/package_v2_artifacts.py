@@ -444,7 +444,7 @@ def save_metrics_artifacts(
         "surge_recall_pct": round(float(perf_xgb["rule_a"]["recall"] * 100.0), 1),
         "latency_ms": round(float(latencies["xgb_e2e"]), 2),
         "n_train": 47076,
-        "n_test": 9480,
+        "n_test": 9210,
         "n_features": 17,
         # v2 extended keys
         "rule_a_recall_pct": round(float(perf_xgb["rule_a"]["recall"] * 100.0), 1),

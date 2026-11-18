@@ -29,7 +29,7 @@ async def explain_prediction(req: PredictRequest, current_user: User = Depends(g
     hour = local_ts.hour + local_ts.minute / 60.0
     day_of_week = local_ts.weekday()
 
-    predicted_load_kw, _, scaled_features = engine.predict(
+    predicted_load_kw, _, raw_features = engine.predict(
         ambient_temp_c=req.ambient_temp_c,
         traffic_inflow_index=req.traffic_inflow_index,
         active_plugs=req.active_plugs,
@@ -37,9 +37,11 @@ async def explain_prediction(req: PredictRequest, current_user: User = Depends(g
         load_lags_kw=req.load_lags_kw,
         hour=hour,
         day_of_week=day_of_week,
+        timestamp=local_ts,
+        prev_active_plugs=req.prev_active_plugs,
     )
 
-    base_value, attributions = engine.explain(scaled_features)
+    base_value, attributions = engine.explain(raw_features)
 
     return ExplainResponse(
         base_value_kw=round(base_value, 4),

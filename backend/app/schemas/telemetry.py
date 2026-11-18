@@ -28,6 +28,9 @@ class PredictRequest(BaseModel):
         ..., min_length=4, max_length=4,
         description="Historical load lags [t-15m, t-30m, t-45m, t-60m] in kW"
     )
+    prev_active_plugs: Optional[int] = Field(
+        None, ge=0, le=8, description="Previous cycle active charging bays for plug delta calculation"
+    )
 
 
 class RecommendedActions(BaseModel):
@@ -135,6 +138,12 @@ class ModelMetrics(BaseModel):
     rmse_kw: float
     surge_recall_pct: float
     latency_ms: float
+    rule_a_recall_pct: Optional[float] = Field(None, description="Recall for emergency surge threshold (actual >= 200 kW)")
+    early_warning_recall_pct: Optional[float] = Field(None, description="Recall for early warning threshold (actual >= 162.5 kW / Rule B)")
+    rule_a_precision_pct: Optional[float] = Field(None, description="Precision for emergency surge threshold (actual >= 200 kW)")
+    latency_model_only_ms: Optional[float] = Field(None, description="Raw model tensor inference latency on CPU (ms)")
+    latency_end_to_end_ms: Optional[float] = Field(None, description="Full end-to-end latency including feature assembly (ms)")
+    n_test_samples: Optional[int] = Field(None, description="Identical held-out test rows evaluated")
 
 
 class MetricsResponse(BaseModel):
