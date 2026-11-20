@@ -101,7 +101,7 @@ export function ForecastTimeline({
     let upper_kw: number | null = null;
     let corridor_range: [number, number] | null = null;
 
-    if (showForecast && i >= splitIndex) {
+    if (showForecast && !isSimulated && i >= splitIndex) {
       const forecastVal = d.simulated_kw;
       lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
       upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
@@ -172,7 +172,9 @@ export function ForecastTimeline({
 
         {/* Screen reader summary */}
         <div className="sr-only">
-          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW with empirical 80% prediction interval [{displayLower} kW to {displayUpper} kW], Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
+          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW
+          {!isSimulated && ` with empirical 80% prediction interval [${displayLower} kW to ${displayUpper} kW]`},
+          Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
         </div>
         
         {/* Header row */}
@@ -200,16 +202,22 @@ export function ForecastTimeline({
                 )}
               </button>
               {showForecast && (
-                <button
-                  type="button"
-                  aria-pressed={showConfidence}
-                  onClick={() => setShowConfidence(!showConfidence)}
-                  title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
-                  className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
-                >
-                  <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
-                  <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
-                </button>
+                isSimulated ? (
+                  <span className="text-xs text-text-secondary/70 italic py-0.5">
+                    Interval not available for simulated scenarios
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    aria-pressed={showConfidence}
+                    onClick={() => setShowConfidence(!showConfidence)}
+                    title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
+                    className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
+                  >
+                    <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
+                    <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -304,7 +312,7 @@ export function ForecastTimeline({
                         <p className="text-primary font-bold font-label-mono text-lg">
                           {kwVal} kW
                         </p>
-                        {isForecastPoint && item.lower_kw !== null && item.upper_kw !== null && (
+                        {isForecastPoint && !isSimulated && item.lower_kw !== null && item.upper_kw !== null && (
                           <p className="text-[11px] font-label-mono text-text-secondary mt-1 border-t border-border-subtle/50 pt-1">
                             Empirical 80% interval: <span className="text-secondary font-medium">{item.lower_kw} – {item.upper_kw} kW</span>
                           </p>
@@ -315,7 +323,7 @@ export function ForecastTimeline({
                   return null;
                 }}
               />
-              {showForecast && showConfidence && (
+              {showForecast && showConfidence && !isSimulated && (
                 <Area
                   type="monotone"
                   dataKey="corridor_range"

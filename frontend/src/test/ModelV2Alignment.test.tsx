@@ -14,6 +14,8 @@ import { buildScenarioPayload, TELEMETRY_SCENARIOS } from '../services/telemetry
 import type { TelemetryScenario } from '../services/telemetryScenarios';
 import { formatBatchTimestampIST } from '../pages/BatchAnalysis';
 
+import { ForecastTimeline } from '../components/Dashboard/ForecastTimeline';
+
 const ALL_17_FEATURES = [
   'load_lag_15m',
   'load_lag_30m',
@@ -200,15 +202,16 @@ describe('Model v2 Alignment Tests', () => {
       expect(payload.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T17:00:00\+05:30$/);
     });
 
-    it('nominal preset has stationLocalTime 14:00 and produces +05:30 timestamp', () => {
+    it('nominal preset has stationLocalTime 12:00, name Nominal Midday, and produces +05:30 timestamp', () => {
       const nominal = TELEMETRY_SCENARIOS.find((s) => s.id === 'nominal');
       expect(nominal).toBeDefined();
-      expect(nominal?.stationLocalTime).toBe('14:00');
+      expect(nominal?.name).toBe('Nominal Midday');
+      expect(nominal?.stationLocalTime).toBe('12:00');
       expect(nominal?.telemetry.active_plugs).toBe(3);
       expect(nominal?.prev_active_plugs).toBe(3);
 
       const payload = buildScenarioPayload(nominal!);
-      expect(payload.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T14:00:00\+05:30$/);
+      expect(payload.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T12:00:00\+05:30$/);
     });
 
     it('leaves timestamp and prev_active_plugs undefined when not set in scenario', () => {
@@ -242,6 +245,60 @@ describe('Model v2 Alignment Tests', () => {
 
     it('returns raw string safely for invalid timestamps', () => {
       expect(formatBatchTimestampIST('invalid-time')).toBe('invalid-time');
+    });
+  });
+
+  describe('ForecastTimeline Simulation Interval Visibility', () => {
+    const mockTimelineData = [
+      { timestamp: '2026-11-20T10:00:00Z', baseline_kw: 100, simulated_kw: 100 },
+      { timestamp: '2026-11-20T11:00:00Z', baseline_kw: 120, simulated_kw: 120 },
+      { timestamp: '2026-11-20T12:00:00Z', baseline_kw: 130, simulated_kw: 130 },
+    ];
+
+    const defaultProps = {
+      data: mockTimelineData,
+      capacityPct: 52.0,
+      surgeStatus: 'NORMAL' as const,
+      tariffMultiplier: 1.0,
+      predictedLoadKw: 130.0,
+      transformerCapacityKw: 250.0,
+      lowerBoundKw: 110.0,
+      upperBoundKw: 150.0,
+      recommendedActions: {
+        dynamic_tariff_multiplier: 1.0,
+        throttle_active: false,
+        per_stall_cap_kw: 60.0,
+        shed_stalls: [],
+      },
+      recentEvents: [],
+    };
+
+    it('in simulation state (isSimulated=true), hides empirical interval legend and shows neutral text', () => {
+      vi.spyOn(DataContextModule, 'useData').mockReturnValue({
+        settings: { notifications_enabled: false },
+      } as any);
+
+      render(<ForecastTimeline {...defaultProps} isSimulated={true} />);
+
+      // Neutral text is displayed
+      expect(screen.getByText('Interval not available for simulated scenarios')).toBeInTheDocument();
+
+      // Empirical interval legend is NOT rendered
+      expect(screen.queryByText(/Empirical 80% interval \(/i)).toBeNull();
+    });
+
+    it('in non-simulation state (isSimulated=false), renders the empirical interval legend with bounds', () => {
+      vi.spyOn(DataContextModule, 'useData').mockReturnValue({
+        settings: { notifications_enabled: false },
+      } as any);
+
+      render(<ForecastTimeline {...defaultProps} isSimulated={false} />);
+
+      // Neutral text is NOT displayed
+      expect(screen.queryByText('Interval not available for simulated scenarios')).toBeNull();
+
+      // Empirical interval legend is rendered with bounds
+      expect(screen.getByText(/Empirical 80% interval \(110\.0 – 150\.0 kW\)/)).toBeInTheDocument();
     });
   });
 });

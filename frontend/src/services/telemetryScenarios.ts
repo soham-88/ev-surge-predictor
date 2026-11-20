@@ -34,19 +34,19 @@ export function buildScenarioPayload(scen: TelemetryScenario): PredictRequest {
 export const TELEMETRY_SCENARIOS: TelemetryScenario[] = [
   {
     id: 'nominal',
-    name: 'Nominal Afternoon',
+    name: 'Nominal Midday',
     shortLabel: 'Nominal',
-    description: 'Moderate weekday charging at 14:00 local with 3 bays active and stable grid conditions.',
+    description: 'Moderate weekday charging at 12:00 local with 3 bays active and stable grid conditions.',
     badgeColor: 'text-status-normal border-status-normal/30 bg-status-normal/10',
     expectedStatus: 'NORMAL',
-    stationLocalTime: '14:00',
+    stationLocalTime: '12:00',
     prev_active_plugs: 3,
     telemetry: {
-      ambient_temp_c: 35.9,
-      traffic_inflow_index: 45,
+      ambient_temp_c: 35.7,
+      traffic_inflow_index: 36,
       active_plugs: 3,
-      grid_frequency_hz: 50.01,
-      load_lags_kw: [85.3, 88.1, 81.9, 84.9],
+      grid_frequency_hz: 50.04,
+      load_lags_kw: [83.9, 92.8, 96.7, 102.0],
     },
   },
   {
