@@ -188,15 +188,15 @@ export function ControlCenterPage() {
   return (
     <>
       {/* Page Header */}
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="font-headline-xl text-headline-xl text-text-primary">System Overview</h1>
-          <p className="font-body-sm text-text-secondary mt-1">2-Hour Ahead Transformer Load & Surge Mitigation</p>
+      <div className="mb-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="shrink-0">
+          <h1 className="font-headline-xl text-headline-xl text-text-primary whitespace-nowrap">System Overview</h1>
+          <p className="font-body-sm text-text-secondary mt-1 whitespace-nowrap">2-Hour Ahead Transformer Load & Surge Mitigation</p>
         </div>
         
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full sm:w-auto">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-start xl:justify-end">
           {/* Telemetry Scenario Switcher */}
-          <div className="flex items-center gap-2 bg-surface-container-low border border-border-subtle rounded-lg px-2.5 sm:px-3 py-1.5 shadow-sm max-w-full flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 bg-surface-container-low border border-border-subtle rounded-lg px-2.5 sm:px-3 py-1.5 shadow-sm shrink-0 flex-wrap sm:flex-nowrap">
             <span className="material-symbols-outlined text-[18px] text-text-secondary shrink-0" aria-hidden="true">tune</span>
             <label htmlFor="feed-scenario-select" className="font-label-mono text-xs uppercase text-text-secondary tracking-wider shrink-0">
               Feed:
@@ -205,7 +205,7 @@ export function ControlCenterPage() {
               id="feed-scenario-select"
               value={activeScenarioId}
               onChange={(e) => switchScenario(e.target.value)}
-              className="bg-transparent text-xs sm:text-sm font-medium text-text-primary focus:outline-none cursor-pointer max-w-[150px] xs:max-w-[200px] sm:max-w-none truncate pr-1"
+              className="bg-transparent text-xs sm:text-sm font-medium text-text-primary focus:outline-none cursor-pointer max-w-[150px] xs:max-w-[200px] sm:max-w-none truncate pr-1 shrink-0"
               title="Switch simulated real-world telemetry scenario"
               aria-label="Select Telemetry Scenario"
             >
@@ -229,7 +229,7 @@ export function ControlCenterPage() {
             ref={incidentLogButtonRef}
             onClick={() => setIsIncidentModalOpen(true)}
             aria-label="View persistent SQLite incident history"
-            className="flex-1 xs:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-primary whitespace-nowrap"
+            className="shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] bg-surface-container-low hover:bg-surface-variant text-text-primary rounded-lg transition-colors border border-border-subtle font-label-mono text-sm tracking-wide shadow-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-primary whitespace-nowrap"
             title="View persistent SQLite incident history"
           >
             <span className="material-symbols-outlined text-[18px] text-status-warning" aria-hidden="true">history_toggle_off</span>
@@ -240,7 +240,7 @@ export function ControlCenterPage() {
             onClick={handleGenerateReport}
             disabled={isGenerating}
             aria-label="Generate PDF diagnostic report"
-            className="flex-1 xs:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary whitespace-nowrap"
+            className="shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] bg-surface-variant hover:bg-surface-bright text-text-primary rounded-lg transition-colors border border-outline-variant font-label-mono text-sm tracking-wide shadow-lg disabled:opacity-50 cursor-pointer focus-visible:ring-2 focus-visible:ring-primary whitespace-nowrap"
           >
             {isGenerating ? (
               <div className="w-5 h-5 border-2 border-text-secondary border-t-text-primary rounded-full animate-spin motion-reduce:animate-none" />

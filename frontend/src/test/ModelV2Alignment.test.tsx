@@ -10,8 +10,9 @@ import {
 } from '../utils/shapSummary';
 import { ModelComparison } from '../components/Dashboard/ModelComparison';
 import * as DataContextModule from '../context/DataContext';
-import { buildScenarioPayload } from '../services/telemetryScenarios';
+import { buildScenarioPayload, TELEMETRY_SCENARIOS } from '../services/telemetryScenarios';
 import type { TelemetryScenario } from '../services/telemetryScenarios';
+import { formatBatchTimestampIST } from '../pages/BatchAnalysis';
 
 const ALL_17_FEATURES = [
   'load_lag_15m',
@@ -99,7 +100,7 @@ describe('Model v2 Alignment Tests', () => {
       ],
     };
 
-    it('renders latency_model_only_ms when present, renders both recall columns, and excludes forbidden words', () => {
+    it('renders without latency chart, shows percentage points, and uses dynamic footnote', () => {
       vi.spyOn(DataContextModule, 'useData').mockReturnValue({
         metricsData: mockV2MetricsResponse,
       } as any);
@@ -119,12 +120,19 @@ describe('Model v2 Alignment Tests', () => {
       expect(screen.getByText('99.6%')).toBeInTheDocument();
       expect(screen.getByText('99.7%')).toBeInTheDocument();
 
-      // Footnote check
-      expect(screen.getByText(/identical held-out rows/)).toBeInTheDocument();
-      expect(screen.getByText(/LSTM benchmark figure excludes constructing the required 8-step sequence history/)).toBeInTheDocument();
+      // Latency chart MUST be removed
+      expect(screen.queryByText(/Inference Latency/i)).toBeNull();
 
-      // Caption check: no forbidden words like "faster" or "fastest"
+      // Footnote check: values from fields and exact development laptop sentence
+      expect(screen.getByText(/identical held-out rows/)).toBeInTheDocument();
+      expect(screen.getByText(/End-to-end: XGBoost 6.3 ms/)).toBeInTheDocument();
+      expect(screen.getByText(/LSTM 0.44 ms/)).toBeInTheDocument();
+      expect(screen.getByText(/LSTM benchmark figure excludes constructing the required 8-step sequence history/)).toBeInTheDocument();
+      expect(screen.getByText(/Measured on a development laptop CPU; values vary between runs\./)).toBeInTheDocument();
+
+      // Caption check: uses percentage points (pp) and no forbidden words
       const text = container.textContent || '';
+      expect(text).toContain('percentage points (pp)');
       expect(text.toLowerCase()).not.toContain('faster');
       expect(text.toLowerCase()).not.toContain('fastest');
     });
@@ -166,7 +174,7 @@ describe('Model v2 Alignment Tests', () => {
     });
   });
 
-  describe('Scenario Timestamp Builder (buildScenarioPayload)', () => {
+  describe('Scenario Timestamp Builder (buildScenarioPayload) & Presets', () => {
     const dummyScenario: TelemetryScenario = {
       id: 'test_scen',
       name: 'Test Scenario',
@@ -192,6 +200,17 @@ describe('Model v2 Alignment Tests', () => {
       expect(payload.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T17:00:00\+05:30$/);
     });
 
+    it('nominal preset has stationLocalTime 14:00 and produces +05:30 timestamp', () => {
+      const nominal = TELEMETRY_SCENARIOS.find((s) => s.id === 'nominal');
+      expect(nominal).toBeDefined();
+      expect(nominal?.stationLocalTime).toBe('14:00');
+      expect(nominal?.telemetry.active_plugs).toBe(3);
+      expect(nominal?.prev_active_plugs).toBe(3);
+
+      const payload = buildScenarioPayload(nominal!);
+      expect(payload.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T14:00:00\+05:30$/);
+    });
+
     it('leaves timestamp and prev_active_plugs undefined when not set in scenario', () => {
       const scenarioWithoutTime: TelemetryScenario = {
         ...dummyScenario,
@@ -201,6 +220,28 @@ describe('Model v2 Alignment Tests', () => {
       const payload = buildScenarioPayload(scenarioWithoutTime);
       expect(payload.prev_active_plugs).toBeUndefined();
       expect(payload.timestamp).toBeUndefined();
+    });
+  });
+
+  describe('Batch Timestamp Formatter (formatBatchTimestampIST)', () => {
+    it('formats single-day UTC ISO timestamp to station-local IST HH:mm', () => {
+      // 2024-12-31T19:30:00.000Z in UTC is 2025-01-01 01:00:00 in IST (+05:30)
+      const istTime = formatBatchTimestampIST('2024-12-31T19:30:00.000Z', false);
+      expect(istTime).toBe('01:00');
+
+      // 2025-06-15T08:30:00.000Z in UTC is 2025-06-15 14:00:00 in IST
+      const afternoonTime = formatBatchTimestampIST('2025-06-15T08:30:00.000Z', false);
+      expect(afternoonTime).toBe('14:00');
+    });
+
+    it('formats multi-day UTC ISO timestamp to station-local IST with date prefix', () => {
+      const multiDay = formatBatchTimestampIST('2024-12-31T19:30:00.000Z', true);
+      expect(multiDay).toContain('Jan 1');
+      expect(multiDay).toContain('01:00');
+    });
+
+    it('returns raw string safely for invalid timestamps', () => {
+      expect(formatBatchTimestampIST('invalid-time')).toBe('invalid-time');
     });
   });
 });

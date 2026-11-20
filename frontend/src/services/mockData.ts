@@ -13,7 +13,7 @@ export const mockPredictResponse: PredictResponse = {
   },
   inference_latency_ms: 1.15,
   lower_bound_kw: 201.6,
-  upper_bound_kw: 245.6,
+  upper_bound_kw: 246.9,
 };
 
 export const mockExplainResponse: ExplainResponse = {
