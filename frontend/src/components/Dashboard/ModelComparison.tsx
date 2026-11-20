@@ -46,15 +46,17 @@ export function ModelComparison({ attributions }: Props) {
     if (!metrics || metrics.models.length < 2) return [];
     const model1 = metrics.models[0];
     const model2 = metrics.models[1];
+    const lat1 = model1.latency_model_only_ms ?? model1.latency_ms;
+    const lat2 = model2.latency_model_only_ms ?? model2.latency_ms;
     return [
-      { name: 'Latency (ms)', [model1.name]: model1.latency_ms, [model2.name]: model2.latency_ms },
+      { name: 'Model Latency (ms)', [model1.name]: lat1, [model2.name]: lat2 },
     ];
   }, [metrics]);
 
   const latencyDomainMax = useMemo(() => {
-    if (!metrics || metrics.models.length === 0) return 0.8;
-    const maxVal = Math.max(...metrics.models.map(m => m.latency_ms || 0));
-    return Math.max(0.8, Math.ceil((maxVal + 0.15) * 5) / 5);
+    if (!metrics || metrics.models.length === 0) return 2.0;
+    const maxVal = Math.max(...metrics.models.map(m => m.latency_model_only_ms ?? m.latency_ms ?? 0));
+    return Math.max(1.5, Math.ceil((maxVal + 0.2) * 2) / 2);
   }, [metrics]);
 
   const dynamicCaption = useMemo(() => {
@@ -68,7 +70,8 @@ export function ModelComparison({ attributions }: Props) {
     const deployed = metrics.models[0];
     const benchmark = metrics.models[1];
 
-    const getShortName = (name: string) => {
+    const getShortName = (name?: string) => {
+      if (!name) return 'Model';
       if (name.toLowerCase().includes('xgboost')) return 'XGBoost';
       if (name.toLowerCase().includes('lstm')) return 'LSTM';
       return name.replace(/\s*\([^)]*\)/g, '').trim();
@@ -78,28 +81,27 @@ export function ModelComparison({ attributions }: Props) {
     const benchmarkName = getShortName(benchmark.name);
 
     const maeDiff = Math.abs(deployed.mae_kw - benchmark.mae_kw);
-    const rmseDiff = Math.abs(deployed.rmse_kw - benchmark.rmse_kw);
+    const deployedCritRecall = deployed.rule_a_recall_pct ?? deployed.surge_recall_pct;
+    const benchmarkCritRecall = benchmark.rule_a_recall_pct ?? benchmark.surge_recall_pct;
+    const recallDiff = Math.abs(deployedCritRecall - benchmarkCritRecall);
 
     let accuracyStatement = '';
-    if (maeDiff < 0.5 && rmseDiff < 0.5) {
-      accuracyStatement = 'Accuracy is comparable';
+    if (maeDiff <= 1.0) {
+      accuracyStatement = `MAE is comparable between both models (difference of ${maeDiff.toFixed(2)} kW)`;
     } else {
-      const lowerErrorModel = (deployed.mae_kw + deployed.rmse_kw) < (benchmark.mae_kw + benchmark.rmse_kw)
-        ? deployedName
-        : benchmarkName;
-      accuracyStatement = `${lowerErrorModel} achieves lower error`;
+      const lowerMaeModel = deployed.mae_kw < benchmark.mae_kw ? deployedName : benchmarkName;
+      accuracyStatement = `${lowerMaeModel} achieves lower MAE by ${maeDiff.toFixed(2)} kW`;
     }
 
     let recallStatement = '';
-    if (deployed.surge_recall_pct > benchmark.surge_recall_pct) {
-      recallStatement = `${deployedName} has higher surge recall`;
-    } else if (benchmark.surge_recall_pct > deployed.surge_recall_pct) {
-      recallStatement = `${benchmarkName} has higher surge recall`;
+    if (recallDiff < 0.1) {
+      recallStatement = 'equal critical surge recall';
     } else {
-      recallStatement = 'both models achieve equal surge recall';
+      const higherRecallModel = deployedCritRecall > benchmarkCritRecall ? deployedName : benchmarkName;
+      recallStatement = `${higherRecallModel} achieves higher critical surge recall by ${recallDiff.toFixed(1)}%`;
     }
 
-    return `${accuracyStatement}, while ${recallStatement}. XGBoost provides exact TreeSHAP attributions and the LSTM is an offline benchmark that is not served live.`;
+    return `${accuracyStatement}, while ${recallStatement}. XGBoost provides exact TreeSHAP attributions; LSTM serves as an offline benchmark.`;
   }, [metrics]);
 
   if (!metrics) return null;
@@ -129,13 +131,16 @@ export function ModelComparison({ attributions }: Props) {
               <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider">Model</th>
               <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider text-right">MAE (kW)</th>
               <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider text-right">RMSE (kW)</th>
-              <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider text-right">Surge Recall</th>
-              <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider text-right">Latency</th>
+              <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider text-right">Critical recall (alert at ≥200 kW)</th>
+              <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider text-right">Early-warning recall (alert at ≥162.5 kW)</th>
+              <th className="py-3 px-4 font-label-mono text-label-mono text-text-secondary uppercase tracking-wider text-right">Latency (model only)</th>
             </tr>
           </thead>
           <tbody>
             {metrics.models.map((model, idx) => {
               const isActive = model.name.includes('(Primary)') || idx === 0;
+              const modelLatency = model.latency_model_only_ms ?? model.latency_ms;
+              const criticalRecall = model.rule_a_recall_pct ?? model.surge_recall_pct;
               return (
                 <tr key={model.name} className={`border-b border-border-subtle/50 ${isActive ? 'bg-primary/5' : ''}`}>
                   <td className="py-4 px-4">
@@ -155,10 +160,13 @@ export function ModelComparison({ attributions }: Props) {
                     {model.rmse_kw.toFixed(2)}
                   </td>
                   <td className="py-4 px-4 font-label-mono text-right tabular-nums text-text-primary">
-                    {model.surge_recall_pct.toFixed(1)}%
+                    {criticalRecall.toFixed(1)}%
                   </td>
                   <td className="py-4 px-4 font-label-mono text-right tabular-nums text-text-primary">
-                    {model.latency_ms.toFixed(1)} ms
+                    {model.early_warning_recall_pct !== undefined ? `${model.early_warning_recall_pct.toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="py-4 px-4 font-label-mono text-right tabular-nums text-text-primary" title={`End-to-end latency: ${(model.latency_end_to_end_ms ?? model.latency_ms).toFixed(2)} ms`}>
+                    {modelLatency.toFixed(2)} ms
                   </td>
                 </tr>
               );
@@ -173,6 +181,15 @@ export function ModelComparison({ attributions }: Props) {
           <span>{dynamicCaption}</span>
         </div>
       )}
+
+      <div className="mt-2.5 pt-2 border-t border-border-subtle/30 flex flex-col gap-1 text-[11px] font-label-mono text-text-secondary/80 leading-relaxed">
+        <p>
+          * Evaluated on {metrics.models[0]?.n_test_samples ? metrics.models[0].n_test_samples.toLocaleString() : 'held-out'} identical held-out rows of synthetic data.
+        </p>
+        <p>
+          * Latency (model only) measures raw model inference time. End-to-end: XGBoost {(metrics.models[0]?.latency_end_to_end_ms ?? metrics.models[0]?.latency_ms)?.toFixed(1)} ms (includes feature assembly), LSTM {(metrics.models[1]?.latency_end_to_end_ms ?? metrics.models[1]?.latency_ms)?.toFixed(2)} ms. Note: LSTM benchmark figure excludes constructing the required 8-step sequence history, which the live ingestion pipeline does not maintain.
+        </p>
+      </div>
 
       {isChartExpanded && metrics.models.length >= 2 && (
         <div className="mt-8 pt-6 border-t border-border-subtle grid grid-cols-1 md:grid-cols-12 gap-6 min-h-72">
@@ -218,7 +235,7 @@ export function ModelComparison({ attributions }: Props) {
           {/* Dedicated Latency Mini Panel (4-col) */}
           <div className="md:col-span-4 flex flex-col h-72 border-t md:border-t-0 md:border-l border-border-subtle/50 pt-4 md:pt-0 md:pl-6">
             <div className="text-xs font-label-mono text-text-secondary uppercase mb-2">
-              Inference Latency (ms) — Lower is better
+              Inference Latency (model only, ms) — Lower is better
             </div>
             <div className="flex-1 w-full">
               <ResponsiveContainer width="100%" height="100%">

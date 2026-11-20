@@ -91,6 +91,22 @@ export interface ModelMetrics {
   rmse_kw: number;
   surge_recall_pct: number;
   latency_ms: number;
+  rule_a_recall_pct?: number;
+  early_warning_recall_pct?: number;
+  rule_a_precision_pct?: number;
+  latency_model_only_ms?: number;
+  latency_end_to_end_ms?: number;
+  n_test_samples?: number;
+}
+
+export interface PredictRequest {
+  timestamp?: string;
+  ambient_temp_c: number;
+  traffic_inflow_index: number;
+  active_plugs: number;
+  grid_frequency_hz: number;
+  load_lags_kw: number[] | [number, number, number, number];
+  prev_active_plugs?: number;
 }
 
 export interface MetricsResponse {
@@ -168,6 +184,8 @@ export const FEATURE_READABLE_NAMES: Record<string, string> = {
   hour_cos: 'Hour Cycle (cos)',
   day_sin: 'Day Cycle (sin)',
   day_cos: 'Day Cycle (cos)',
+  load_anomaly: 'Load vs Normal (hour-of-week)',
+  lag_trend: 'Load Trend (60m to 15m)',
 };
 
 export function getFeatureReadableName(feature: string): string {

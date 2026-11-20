@@ -103,6 +103,8 @@ export function ControlCenterPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
 
+  const activeScenario = scenarios.find((s) => s.id === activeScenarioId);
+
   if (isLoading) {
     return <ControlCenterSkeleton />;
   }
@@ -216,6 +218,11 @@ export function ControlCenterPage() {
             <span className="bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] uppercase font-bold tracking-widest font-label-mono leading-none shrink-0">
               Simulated telemetry
             </span>
+            {activeScenario?.stationLocalTime && (
+              <span className="bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-bold font-label-mono leading-none shrink-0">
+                Scenario time {activeScenario.stationLocalTime} IST
+              </span>
+            )}
           </div>
 
           <button
