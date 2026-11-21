@@ -307,8 +307,8 @@ describe('Model v2 Alignment Tests', () => {
     });
   });
 
-  describe('Control Center Scenario Timeline Builder (Phase E.2d)', () => {
-    it('returns last four actual points equal to scenario lags at t-60, t-45, t-30, and t-15 minutes', () => {
+  describe('Control Center Scenario Timeline Builder (Phase E.2e)', () => {
+    it('scenario chart data has a contiguous actual series of exactly 8 points whose last four equal the lags', () => {
       const nominal = TELEMETRY_SCENARIOS.find(s => s.id === 'nominal')!;
       const timeline = buildScenarioTimeline(nominal, {
         predicted_load_kw: 98.5,
@@ -316,12 +316,17 @@ describe('Model v2 Alignment Tests', () => {
         upper_bound_kw: 117.2,
       }, '2026-11-20');
 
+      // Exactly 8 actual points (t-120m to t-15m in 15m steps)
       const actualPoints = timeline.filter(p => p.historical_kw !== null);
-      expect(actualPoints.length).toBeGreaterThanOrEqual(4);
+      expect(actualPoints).toHaveLength(8);
 
-      const lastFourActual = actualPoints.slice(-4);
-      // Lags are [lag_15m, lag_30m, lag_45m, lag_60m]
+      // Verify continuity: each actual point is exactly 15 minutes after the previous
+      for (let i = 1; i < actualPoints.length; i++) {
+        expect(actualPoints[i].time! - actualPoints[i - 1].time!).toBe(15 * 60 * 1000);
+      }
+
       // Last 4 actual points in chronological order: t-60m, t-45m, t-30m, t-15m
+      const lastFourActual = actualPoints.slice(-4);
       expect(lastFourActual[0].historical_kw).toBe(nominal.telemetry.load_lags_kw[3]); // lag_60m (102.0)
       expect(lastFourActual[1].historical_kw).toBe(nominal.telemetry.load_lags_kw[2]); // lag_45m (96.7)
       expect(lastFourActual[2].historical_kw).toBe(nominal.telemetry.load_lags_kw[1]); // lag_30m (92.8)
@@ -334,7 +339,7 @@ describe('Model v2 Alignment Tests', () => {
       expect(formatTimelineTimestamp(lastFourActual[3].timestamp)).toBe('11:45');
     });
 
-    it('returns forecast marker equal to predicted_load_kw at t+2h with lower/upper bounds', () => {
+    it('forecast series has exactly 2 points: first equal to (t-15, lag_15m) and second equal to (t+2h, predicted)', () => {
       const nominal = TELEMETRY_SCENARIOS.find(s => s.id === 'nominal')!;
       const timeline = buildScenarioTimeline(nominal, {
         predicted_load_kw: 98.5,
@@ -343,19 +348,24 @@ describe('Model v2 Alignment Tests', () => {
       }, '2026-11-20');
 
       const forecastPoints = timeline.filter(p => p.forecast_kw !== null);
-      expect(forecastPoints.length).toBeGreaterThanOrEqual(1);
+      expect(forecastPoints).toHaveLength(2);
 
-      const marker = forecastPoints[forecastPoints.length - 1];
-      expect(marker.forecast_kw).toBe(98.5);
-      expect(marker.lower_kw).toBe(78.8);
-      expect(marker.upper_kw).toBe(117.2);
-      expect(marker.corridor_range).toEqual([78.8, 117.2]);
+      // First forecast point connects directly to the last actual point at t-15m
+      const first = forecastPoints[0];
+      expect(first.forecast_kw).toBe(nominal.telemetry.load_lags_kw[0]); // 83.9
+      expect(formatTimelineTimestamp(first.timestamp)).toBe('11:45');
 
-      // t+2h after 12:00 is 14:00
-      expect(formatTimelineTimestamp(marker.timestamp)).toBe('14:00');
+      // Second forecast point is at t+2h with predicted load and error interval
+      const second = forecastPoints[1];
+      expect(second.forecast_kw).toBe(98.5);
+      expect(second.lower_kw).toBe(78.8);
+      expect(second.upper_kw).toBe(117.2);
+      expect(second.corridor_range).toEqual([78.8, 117.2]);
+      expect(second.interval_error).toEqual([19.7, 18.7]);
+      expect(formatTimelineTimestamp(second.timestamp)).toBe('14:00');
     });
 
-    it('anchors time axis start and end to scenario stationLocalTime', () => {
+    it('tick spacing is uniform in time (every 30 minutes) and domain covers [t-120min, t+2h+15min]', () => {
       const evening = TELEMETRY_SCENARIOS.find(s => s.id === 'evening_peak')!;
       const timeline = buildScenarioTimeline(evening, {
         predicted_load_kw: 195.1,
@@ -363,15 +373,26 @@ describe('Model v2 Alignment Tests', () => {
         upper_bound_kw: 217.4,
       }, '2026-11-20');
 
-      // Evening peak is at 17:00
-      // Axis start (t-120m) is 15:00, axis end (t+120m) is 19:00
-      const startFormatted = formatTimelineTimestamp(timeline[0].timestamp);
-      const endFormatted = formatTimelineTimestamp(timeline[timeline.length - 1].timestamp);
-      expect(startFormatted).toBe('15:00');
-      expect(endFormatted).toBe('19:00');
+      const lastPoint = timeline[timeline.length - 1];
+      const nowMs = lastPoint.time! - 120 * 60 * 1000;
+      const ticks = [-120, -90, -60, -30, 0, 30, 60, 90, 120].map((m) => nowMs + m * 60 * 1000);
+
+      // Verify uniform spacing: exactly 30 minutes (1,800,000 ms) between every tick
+      for (let i = 1; i < ticks.length; i++) {
+        expect(ticks[i] - ticks[i - 1]).toBe(30 * 60 * 1000);
+      }
+
+      // Verify domain [t-120min, t+2h+15min]
+      const domainMin = nowMs - 120 * 60 * 1000;
+      const domainMax = nowMs + 135 * 60 * 1000;
+      expect(domainMax - domainMin).toBe(255 * 60 * 1000); // 4h15m
+
+      // First and last tick format to IST (Evening peak is 17:00 IST -> 15:00 to 19:00)
+      expect(formatTimelineTimestamp(ticks[0])).toBe('15:00');
+      expect(formatTimelineTimestamp(ticks[ticks.length - 1])).toBe('19:00');
     });
 
-    it('validates all 4 presets: plotted forecast equals predicted_load_kw and last four actual points equal lags', () => {
+    it('validates all 4 presets: forecast series has 2 points starting at last actual and ending at predicted_load_kw', () => {
       const mockPredictions: Record<string, { pred: number; lower: number; upper: number }> = {
         nominal: { pred: 98.5, lower: 78.8, upper: 117.2 },
         evening_peak: { pred: 195.1, lower: 172.1, upper: 217.4 },
@@ -387,13 +408,15 @@ describe('Model v2 Alignment Tests', () => {
           upper_bound_kw: predInfo.upper,
         }, '2026-11-20');
 
-        // Check forecast
+        // Check forecast series: exactly 2 points
         const forecastPoints = timeline.filter(p => p.forecast_kw !== null);
-        const lastForecast = forecastPoints[forecastPoints.length - 1];
-        expect(lastForecast.forecast_kw).toBe(predInfo.pred);
+        expect(forecastPoints).toHaveLength(2);
+        expect(forecastPoints[0].forecast_kw).toBe(scen.telemetry.load_lags_kw[0]);
+        expect(forecastPoints[1].forecast_kw).toBe(predInfo.pred);
 
-        // Check last 4 actual points
+        // Check last 4 actual points equal lags
         const actualPoints = timeline.filter(p => p.historical_kw !== null);
+        expect(actualPoints).toHaveLength(8);
         const lastFour = actualPoints.slice(-4);
         expect(lastFour[0].historical_kw).toBe(scen.telemetry.load_lags_kw[3]);
         expect(lastFour[1].historical_kw).toBe(scen.telemetry.load_lags_kw[2]);
