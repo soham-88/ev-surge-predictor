@@ -85,7 +85,7 @@ async def predict_surge(req: PredictRequest, current_user: User = Depends(get_cu
     # with the TreeSHAP /explain endpoint and historical evaluations.
     ambient_temp = req.ambient_temp_c
 
-    predicted_load_kw, latency_ms, scaled_features = engine.predict(
+    predicted_load_kw, latency_ms, raw_features = engine.predict(
         ambient_temp_c=ambient_temp,
         traffic_inflow_index=req.traffic_inflow_index,
         active_plugs=req.active_plugs,
@@ -93,6 +93,8 @@ async def predict_surge(req: PredictRequest, current_user: User = Depends(get_cu
         load_lags_kw=req.load_lags_kw,
         hour=hour,
         day_of_week=day_of_week,
+        timestamp=local_ts,
+        prev_active_plugs=req.prev_active_plugs,
     )
 
     mitigations = compute_mitigations(predicted_load_kw, req.active_plugs)

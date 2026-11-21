@@ -8,10 +8,13 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ErrorBar,
+  ReferenceArea,
 } from 'recharts';
 import { useEffect, useState, useRef } from 'react';
 import { animate } from 'animejs';
 import type { TimelinePoint } from '../../types/telemetry';
+import { formatTimelineTimestamp } from '../../services/telemetryScenarios';
 import { Tile } from '../ui/Tile';
 import { AnimatedNumber } from '../ui/AnimatedNumber';
 import { useData } from '../../context/DataContext';
@@ -96,29 +99,54 @@ export function ForecastTimeline({
     ? upperBoundKw.toFixed(1)
     : (predictedLoadKw + q90Offset).toFixed(1);
 
-  const chartData = recentData.map((d, i) => {
-    let lower_kw: number | null = null;
-    let upper_kw: number | null = null;
-    let corridor_range: [number, number] | null = null;
+  const chartData = recentData
+    .map((d: any, i) => {
+      if ('historical_kw' in d && (d.historical_kw !== undefined || d.forecast_kw !== undefined)) {
+        if (!showForecast) {
+          if (d.historical_kw === null) return null;
+          return { ...d, forecast_kw: null, interval_error: null, corridor_range: null };
+        }
+        return {
+          ...d,
+          corridor_range: showConfidence ? d.corridor_range : null,
+          interval_error: showConfidence ? d.interval_error : null,
+        };
+      }
 
-    if (showForecast && i >= splitIndex) {
-      const forecastVal = d.simulated_kw;
-      lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
-      upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
-      corridor_range = [lower_kw, upper_kw];
-    }
+      let lower_kw: number | null = null;
+      let upper_kw: number | null = null;
+      let corridor_range: [number, number] | null = null;
 
-    if (!showForecast) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
-    }
-    if (i < splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
-    } else if (i === splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
-    } else {
-      return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
-    }
-  });
+      if (showForecast && !isSimulated && i >= splitIndex) {
+        const forecastVal = d.simulated_kw;
+        lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
+        upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
+        corridor_range = [lower_kw, upper_kw];
+      }
+
+      if (!showForecast) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
+      }
+      if (i < splitIndex) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
+      } else if (i === splitIndex) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
+      } else {
+        return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
+      }
+    })
+    .filter((d): d is NonNullable<typeof d> => d !== null);
+
+  const isScenarioMode = !isSimulated && chartData.length > 0 && typeof (chartData[0] as any).time === 'number';
+  const lastPointTime = isScenarioMode ? (chartData[chartData.length - 1] as any).time : 0;
+  const scenarioNowMs = isScenarioMode ? lastPointTime - 120 * 60 * 1000 : 0;
+  const scenarioDomain: [number, number] = isScenarioMode
+    ? [scenarioNowMs - 120 * 60 * 1000, scenarioNowMs + 135 * 60 * 1000]
+    : [0, 0];
+  const scenarioTicks = isScenarioMode
+    ? [-120, -90, -60, -30, 0, 30, 60, 90, 120].map((m) => scenarioNowMs + m * 60 * 1000)
+    : undefined;
+  const forecastTimeMs = isScenarioMode ? lastPointTime : 0;
 
   const handleExportCSV = () => {
     setIsDropdownOpen(false);
@@ -172,7 +200,9 @@ export function ForecastTimeline({
 
         {/* Screen reader summary */}
         <div className="sr-only">
-          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW with empirical 80% prediction interval [{displayLower} kW to {displayUpper} kW], Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
+          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW
+          {!isSimulated && ` with empirical 80% prediction interval [${displayLower} kW to ${displayUpper} kW]`},
+          Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
         </div>
         
         {/* Header row */}
@@ -200,16 +230,22 @@ export function ForecastTimeline({
                 )}
               </button>
               {showForecast && (
-                <button
-                  type="button"
-                  aria-pressed={showConfidence}
-                  onClick={() => setShowConfidence(!showConfidence)}
-                  title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
-                  className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
-                >
-                  <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
-                  <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
-                </button>
+                isSimulated ? (
+                  <span className="text-xs text-text-secondary/70 italic py-0.5">
+                    Interval not available for simulated scenarios
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    aria-pressed={showConfidence}
+                    onClick={() => setShowConfidence(!showConfidence)}
+                    title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
+                    className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
+                  >
+                    <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
+                    <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -264,20 +300,36 @@ export function ForecastTimeline({
               
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               
-              <XAxis
-                dataKey="timestamp"
-                stroke="rgba(255,255,255,0.15)"
-                tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
-                tickFormatter={(val) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                axisLine={false}
-                tickLine={false}
-              />
+              {isScenarioMode ? (
+                <XAxis
+                  dataKey="time"
+                  type="number"
+                  scale="time"
+                  domain={scenarioDomain}
+                  ticks={scenarioTicks}
+                  stroke="rgba(255,255,255,0.15)"
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
+                  tickFormatter={formatTimelineTimestamp}
+                  axisLine={false}
+                  tickLine={false}
+                />
+              ) : (
+                <XAxis
+                  dataKey="timestamp"
+                  stroke="rgba(255,255,255,0.15)"
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
+                  tickFormatter={formatTimelineTimestamp}
+                  axisLine={false}
+                  tickLine={false}
+                />
+              )}
               
               <YAxis
                 stroke="rgba(255,255,255,0.15)"
                 tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
                 axisLine={false}
                 tickLine={false}
+                domain={[0, (dataMax: number) => Math.max(dataMax, transformerCapacityKw + 15, Math.ceil((upperBoundKw ?? 0) * 1.05))]}
                 label={{
                   value: 'kW',
                   angle: -90,
@@ -295,16 +347,17 @@ export function ForecastTimeline({
                     if (!item) return null;
                     const kwVal = item.forecast_kw ?? item.historical_kw;
                     const isForecastPoint = item.forecast_kw !== null && item.historical_kw === null;
+                    const timeLabel = item.timestamp ?? label;
                     return (
                       <div className="bg-surface/90 backdrop-blur-xl border border-border p-3 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.3)] min-w-[150px]">
                         <p className="text-text-secondary text-xs mb-1 font-label-mono">
-                          {label ? new Date(label as string | number).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {timeLabel ? formatTimelineTimestamp(timeLabel) : ''}
                           {isForecastPoint && <span className="ml-2 text-secondary font-bold">FORECAST</span>}
                         </p>
                         <p className="text-primary font-bold font-label-mono text-lg">
                           {kwVal} kW
                         </p>
-                        {isForecastPoint && item.lower_kw !== null && item.upper_kw !== null && (
+                        {isForecastPoint && !isSimulated && item.lower_kw !== null && item.upper_kw !== null && (
                           <p className="text-[11px] font-label-mono text-text-secondary mt-1 border-t border-border-subtle/50 pt-1">
                             Empirical 80% interval: <span className="text-secondary font-medium">{item.lower_kw} – {item.upper_kw} kW</span>
                           </p>
@@ -315,7 +368,22 @@ export function ForecastTimeline({
                   return null;
                 }}
               />
-              {showForecast && showConfidence && (
+              {/* Vertical confidence interval band at t+2h only in scenario mode */}
+              {showForecast && showConfidence && isScenarioMode && forecastTimeMs && lowerBoundKw !== undefined && upperBoundKw !== undefined && (
+                <ReferenceArea
+                  x1={forecastTimeMs - 3 * 60 * 1000}
+                  x2={forecastTimeMs + 3 * 60 * 1000}
+                  y1={lowerBoundKw}
+                  y2={upperBoundKw}
+                  fill="var(--color-secondary)"
+                  fillOpacity={0.2}
+                  stroke="var(--color-secondary)"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.5}
+                />
+              )}
+              {showForecast && showConfidence && !isSimulated && !isScenarioMode && (
                 <Area
                   type="monotone"
                   dataKey="corridor_range"
@@ -338,16 +406,38 @@ export function ForecastTimeline({
               />
               {showForecast && (
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="forecast_kw"
                   stroke="var(--color-secondary)"
                   strokeWidth={3}
                   strokeDasharray="5 5"
-                  dot={{ r: 6, stroke: 'var(--color-secondary)', strokeWidth: 2, fill: 'var(--color-background)' }}
+                  dot={(props: any) => {
+                    if (props.payload?.historical_kw !== null) return null;
+                    return (
+                      <circle
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={6}
+                        stroke="var(--color-secondary)"
+                        strokeWidth={2}
+                        fill="var(--color-background)"
+                      />
+                    );
+                  }}
                   activeDot={{ r: 8, stroke: 'var(--color-secondary)', strokeWidth: 2, fill: 'var(--color-background)' }}
                   isAnimationActive={false}
                   className="forecast-line"
-                />
+                >
+                  {showConfidence && !isSimulated && (
+                    <ErrorBar
+                      dataKey="interval_error"
+                      direction="y"
+                      width={12}
+                      stroke="var(--color-secondary)"
+                      strokeWidth={2}
+                    />
+                  )}
+                </Line>
               )}
               {/* Reference line for capacity */}
               <ReferenceLine

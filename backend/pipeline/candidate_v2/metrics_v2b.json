@@ -1,0 +1,16 @@
+{
+  "model": "XGBRegressor_v2b_monotone_rolling_mean",
+  "random_seed": 42,
+  "best_iteration": 447,
+  "monotone_constraints": {
+    "load_lag_15m": 1,
+    "load_lag_30m": 1,
+    "load_lag_45m": 1,
+    "load_lag_60m": 1,
+    "rolling_mean_60m": 1,
+    "load_anomaly": 1,
+    "lag_trend": 1
+  },
+  "train_mae": 11.763,
+  "val_mae": 12.543
+}

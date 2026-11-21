@@ -289,7 +289,7 @@ export function GlobalShapImportance() {
             data={chartData}
             margin={{ top: topMargin, right: 110, left: 15, bottom: bottomMargin }}
             barCategoryGap="16%"
-            aria-label={`Global feature importance ranking of 15 features. Dominant driver is ${summary.dominantFeature?.name} with ${summary.dominantFeature?.sharePct.toFixed(1)}% share.`}
+            aria-label={`Global feature importance ranking of ${data.feature_importances.length} features. Dominant driver is ${summary.dominantFeature?.name} with ${summary.dominantFeature?.sharePct.toFixed(1)}% share.`}
           >
             <XAxis
               type="number"
