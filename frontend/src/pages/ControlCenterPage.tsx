@@ -2,7 +2,8 @@ import { ForecastTimeline } from '../components/Dashboard/ForecastTimeline';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
+import { buildScenarioTimeline } from '../services/telemetryScenarios';
 import { ReportTemplate } from '../components/Dashboard/ReportTemplate';
 import { IncidentHistoryModal } from '../components/Dashboard/IncidentHistoryModal';
 import { Skeleton, SkeletonText, ErrorState } from '../components/ui';
@@ -104,6 +105,13 @@ export function ControlCenterPage() {
   const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
 
   const activeScenario = scenarios.find((s) => s.id === activeScenarioId);
+
+  const timelineData = useMemo(() => {
+    if (isSimulationMode || !activeScenario) {
+      return simulateData?.timeline ?? [];
+    }
+    return buildScenarioTimeline(activeScenario, predictData);
+  }, [isSimulationMode, activeScenario, simulateData?.timeline, predictData]);
 
   if (isLoading) {
     return <ControlCenterSkeleton />;
@@ -260,7 +268,9 @@ export function ControlCenterPage() {
         >
           <div className="flex items-center gap-3">
             <span className="material-symbols-outlined text-primary">science</span>
-            <span className="font-body-md text-text-primary font-bold tracking-wide">SIMULATION ACTIVE — viewing hypothetical data</span>
+            <span className="font-body-md text-text-primary font-bold tracking-wide">
+              SIMULATION ACTIVE — viewing hypothetical data (rule-based stress simulator; separate from XGBoost forecast)
+            </span>
           </div>
           {user?.role === 'Operator' && (
             <Link 
@@ -277,7 +287,7 @@ export function ControlCenterPage() {
       <div className="grid grid-cols-1 md:grid-cols-12 gap-gap-grid auto-rows-min">
         {/* Row 1: Hero Chart (8-col) + 3 Utility cards (4-col each stacked or side by side) */}
         <ForecastTimeline
-          data={simulateData.timeline}
+          data={timelineData}
           capacityPct={displayCapacityPct}
           surgeStatus={displaySurgeStatus}
           tariffMultiplier={displayTariffMultiplier}

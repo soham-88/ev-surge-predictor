@@ -12,6 +12,7 @@ import {
 import { useEffect, useState, useRef } from 'react';
 import { animate } from 'animejs';
 import type { TimelinePoint } from '../../types/telemetry';
+import { formatTimelineTimestamp } from '../../services/telemetryScenarios';
 import { Tile } from '../ui/Tile';
 import { AnimatedNumber } from '../ui/AnimatedNumber';
 import { useData } from '../../context/DataContext';
@@ -96,29 +97,41 @@ export function ForecastTimeline({
     ? upperBoundKw.toFixed(1)
     : (predictedLoadKw + q90Offset).toFixed(1);
 
-  const chartData = recentData.map((d, i) => {
-    let lower_kw: number | null = null;
-    let upper_kw: number | null = null;
-    let corridor_range: [number, number] | null = null;
+  const chartData = recentData
+    .map((d: any, i) => {
+      if ('historical_kw' in d && (d.historical_kw !== undefined || d.forecast_kw !== undefined)) {
+        if (!showForecast && d.historical_kw === null) {
+          return null;
+        }
+        return {
+          ...d,
+          corridor_range: showConfidence ? d.corridor_range : null,
+        };
+      }
 
-    if (showForecast && !isSimulated && i >= splitIndex) {
-      const forecastVal = d.simulated_kw;
-      lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
-      upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
-      corridor_range = [lower_kw, upper_kw];
-    }
+      let lower_kw: number | null = null;
+      let upper_kw: number | null = null;
+      let corridor_range: [number, number] | null = null;
 
-    if (!showForecast) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
-    }
-    if (i < splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
-    } else if (i === splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
-    } else {
-      return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
-    }
-  });
+      if (showForecast && !isSimulated && i >= splitIndex) {
+        const forecastVal = d.simulated_kw;
+        lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
+        upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
+        corridor_range = [lower_kw, upper_kw];
+      }
+
+      if (!showForecast) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
+      }
+      if (i < splitIndex) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
+      } else if (i === splitIndex) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
+      } else {
+        return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
+      }
+    })
+    .filter((d): d is NonNullable<typeof d> => d !== null);
 
   const handleExportCSV = () => {
     setIsDropdownOpen(false);
@@ -276,7 +289,7 @@ export function ForecastTimeline({
                 dataKey="timestamp"
                 stroke="rgba(255,255,255,0.15)"
                 tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
-                tickFormatter={(val) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                tickFormatter={formatTimelineTimestamp}
                 axisLine={false}
                 tickLine={false}
               />
@@ -306,7 +319,7 @@ export function ForecastTimeline({
                     return (
                       <div className="bg-surface/90 backdrop-blur-xl border border-border p-3 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.3)] min-w-[150px]">
                         <p className="text-text-secondary text-xs mb-1 font-label-mono">
-                          {label ? new Date(label as string | number).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {label ? formatTimelineTimestamp(String(label)) : ''}
                           {isForecastPoint && <span className="ml-2 text-secondary font-bold">FORECAST</span>}
                         </p>
                         <p className="text-primary font-bold font-label-mono text-lg">

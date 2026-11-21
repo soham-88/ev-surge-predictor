@@ -10,7 +10,12 @@ import {
 } from '../utils/shapSummary';
 import { ModelComparison } from '../components/Dashboard/ModelComparison';
 import * as DataContextModule from '../context/DataContext';
-import { buildScenarioPayload, TELEMETRY_SCENARIOS } from '../services/telemetryScenarios';
+import {
+  buildScenarioPayload,
+  buildScenarioTimeline,
+  formatTimelineTimestamp,
+  TELEMETRY_SCENARIOS,
+} from '../services/telemetryScenarios';
 import type { TelemetryScenario } from '../services/telemetryScenarios';
 import { formatBatchTimestampIST } from '../pages/BatchAnalysis';
 
@@ -299,6 +304,102 @@ describe('Model v2 Alignment Tests', () => {
 
       // Empirical interval legend is rendered with bounds
       expect(screen.getByText(/Empirical 80% interval \(110\.0 – 150\.0 kW\)/)).toBeInTheDocument();
+    });
+  });
+
+  describe('Control Center Scenario Timeline Builder (Phase E.2d)', () => {
+    it('returns last four actual points equal to scenario lags at t-60, t-45, t-30, and t-15 minutes', () => {
+      const nominal = TELEMETRY_SCENARIOS.find(s => s.id === 'nominal')!;
+      const timeline = buildScenarioTimeline(nominal, {
+        predicted_load_kw: 98.5,
+        lower_bound_kw: 78.8,
+        upper_bound_kw: 117.2,
+      }, '2026-11-20');
+
+      const actualPoints = timeline.filter(p => p.historical_kw !== null);
+      expect(actualPoints.length).toBeGreaterThanOrEqual(4);
+
+      const lastFourActual = actualPoints.slice(-4);
+      // Lags are [lag_15m, lag_30m, lag_45m, lag_60m]
+      // Last 4 actual points in chronological order: t-60m, t-45m, t-30m, t-15m
+      expect(lastFourActual[0].historical_kw).toBe(nominal.telemetry.load_lags_kw[3]); // lag_60m (102.0)
+      expect(lastFourActual[1].historical_kw).toBe(nominal.telemetry.load_lags_kw[2]); // lag_45m (96.7)
+      expect(lastFourActual[2].historical_kw).toBe(nominal.telemetry.load_lags_kw[1]); // lag_30m (92.8)
+      expect(lastFourActual[3].historical_kw).toBe(nominal.telemetry.load_lags_kw[0]); // lag_15m (83.9)
+
+      // Timestamps verify t-60m, t-45m, t-30m, t-15m relative to 12:00
+      expect(formatTimelineTimestamp(lastFourActual[0].timestamp)).toBe('11:00');
+      expect(formatTimelineTimestamp(lastFourActual[1].timestamp)).toBe('11:15');
+      expect(formatTimelineTimestamp(lastFourActual[2].timestamp)).toBe('11:30');
+      expect(formatTimelineTimestamp(lastFourActual[3].timestamp)).toBe('11:45');
+    });
+
+    it('returns forecast marker equal to predicted_load_kw at t+2h with lower/upper bounds', () => {
+      const nominal = TELEMETRY_SCENARIOS.find(s => s.id === 'nominal')!;
+      const timeline = buildScenarioTimeline(nominal, {
+        predicted_load_kw: 98.5,
+        lower_bound_kw: 78.8,
+        upper_bound_kw: 117.2,
+      }, '2026-11-20');
+
+      const forecastPoints = timeline.filter(p => p.forecast_kw !== null);
+      expect(forecastPoints.length).toBeGreaterThanOrEqual(1);
+
+      const marker = forecastPoints[forecastPoints.length - 1];
+      expect(marker.forecast_kw).toBe(98.5);
+      expect(marker.lower_kw).toBe(78.8);
+      expect(marker.upper_kw).toBe(117.2);
+      expect(marker.corridor_range).toEqual([78.8, 117.2]);
+
+      // t+2h after 12:00 is 14:00
+      expect(formatTimelineTimestamp(marker.timestamp)).toBe('14:00');
+    });
+
+    it('anchors time axis start and end to scenario stationLocalTime', () => {
+      const evening = TELEMETRY_SCENARIOS.find(s => s.id === 'evening_peak')!;
+      const timeline = buildScenarioTimeline(evening, {
+        predicted_load_kw: 195.1,
+        lower_bound_kw: 172.1,
+        upper_bound_kw: 217.4,
+      }, '2026-11-20');
+
+      // Evening peak is at 17:00
+      // Axis start (t-120m) is 15:00, axis end (t+120m) is 19:00
+      const startFormatted = formatTimelineTimestamp(timeline[0].timestamp);
+      const endFormatted = formatTimelineTimestamp(timeline[timeline.length - 1].timestamp);
+      expect(startFormatted).toBe('15:00');
+      expect(endFormatted).toBe('19:00');
+    });
+
+    it('validates all 4 presets: plotted forecast equals predicted_load_kw and last four actual points equal lags', () => {
+      const mockPredictions: Record<string, { pred: number; lower: number; upper: number }> = {
+        nominal: { pred: 98.5, lower: 78.8, upper: 117.2 },
+        evening_peak: { pred: 195.1, lower: 172.1, upper: 217.4 },
+        heatwave_surge: { pred: 264.4, lower: 241.4, upper: 286.8 },
+        monsoon_lull: { pred: 65.6, lower: 45.9, upper: 84.3 },
+      };
+
+      for (const scen of TELEMETRY_SCENARIOS) {
+        const predInfo = mockPredictions[scen.id];
+        const timeline = buildScenarioTimeline(scen, {
+          predicted_load_kw: predInfo.pred,
+          lower_bound_kw: predInfo.lower,
+          upper_bound_kw: predInfo.upper,
+        }, '2026-11-20');
+
+        // Check forecast
+        const forecastPoints = timeline.filter(p => p.forecast_kw !== null);
+        const lastForecast = forecastPoints[forecastPoints.length - 1];
+        expect(lastForecast.forecast_kw).toBe(predInfo.pred);
+
+        // Check last 4 actual points
+        const actualPoints = timeline.filter(p => p.historical_kw !== null);
+        const lastFour = actualPoints.slice(-4);
+        expect(lastFour[0].historical_kw).toBe(scen.telemetry.load_lags_kw[3]);
+        expect(lastFour[1].historical_kw).toBe(scen.telemetry.load_lags_kw[2]);
+        expect(lastFour[2].historical_kw).toBe(scen.telemetry.load_lags_kw[1]);
+        expect(lastFour[3].historical_kw).toBe(scen.telemetry.load_lags_kw[0]);
+      }
     });
   });
 });
