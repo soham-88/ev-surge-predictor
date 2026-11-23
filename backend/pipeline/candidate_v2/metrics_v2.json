@@ -1,0 +1,51 @@
+{
+  "model": "XGBRegressor_v2_monotone",
+  "random_seed": 42,
+  "best_iteration": 503,
+  "n_features": 17,
+  "feature_names": [
+    "ambient_temp_c",
+    "traffic_inflow_index",
+    "active_plugs",
+    "grid_frequency_hz",
+    "load_lag_15m",
+    "load_lag_30m",
+    "load_lag_45m",
+    "load_lag_60m",
+    "rolling_mean_60m",
+    "rolling_std_60m",
+    "plug_delta_15m",
+    "hour_sin",
+    "hour_cos",
+    "day_sin",
+    "day_cos",
+    "load_anomaly",
+    "lag_trend"
+  ],
+  "monotone_constraints": {
+    "load_lag_15m": 1,
+    "load_lag_30m": 1,
+    "load_lag_45m": 1,
+    "load_lag_60m": 1,
+    "load_anomaly": 1,
+    "lag_trend": 1
+  },
+  "train": {
+    "rows": 47076,
+    "mae_kw": 11.62,
+    "rmse_kw": 14.68,
+    "r2": 0.9347
+  },
+  "val": {
+    "rows": 9420,
+    "mae_kw": 12.508,
+    "rmse_kw": 15.741,
+    "r2": 0.9231
+  },
+  "test": {
+    "rows": 9480,
+    "mae_kw": 12.627,
+    "rmse_kw": 15.878,
+    "r2": 0.9189
+  }
+}

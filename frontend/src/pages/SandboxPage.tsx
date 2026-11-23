@@ -125,6 +125,9 @@ export function SandboxPage() {
         <p className="font-body-sm text-text-secondary mt-1">
           Interactive what-if scenario perturbation and autonomous grid mitigation dispatch.
         </p>
+        <p className="font-body-sm text-text-secondary mt-1">
+          Rule-based stress simulator (physics heuristic). It is separate from the XGBoost forecast and its results are not model predictions.
+        </p>
       </div>
 
       <div className="flex flex-col gap-gap-grid">

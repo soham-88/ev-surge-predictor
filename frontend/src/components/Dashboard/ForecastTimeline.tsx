@@ -8,10 +8,13 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ErrorBar,
+  ReferenceArea,
 } from 'recharts';
 import { useEffect, useState, useRef } from 'react';
 import { animate } from 'animejs';
 import type { TimelinePoint } from '../../types/telemetry';
+import { formatTimelineTimestamp } from '../../services/telemetryScenarios';
 import { Tile } from '../ui/Tile';
 import { AnimatedNumber } from '../ui/AnimatedNumber';
 import { useData } from '../../context/DataContext';
@@ -57,7 +60,7 @@ export function ForecastTimeline({
   const [timeRange, setTimeRange] = useState<6 | 12 | 24>(24);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
+
   const { settings } = useData();
 
   useEffect(() => {
@@ -96,29 +99,68 @@ export function ForecastTimeline({
     ? upperBoundKw.toFixed(1)
     : (predictedLoadKw + q90Offset).toFixed(1);
 
-  const chartData = recentData.map((d, i) => {
-    let lower_kw: number | null = null;
-    let upper_kw: number | null = null;
-    let corridor_range: [number, number] | null = null;
+  const chartData = recentData
+    .map((d: any, i) => {
+      if ('historical_kw' in d && (d.historical_kw !== undefined || d.forecast_kw !== undefined)) {
+        if (!showForecast) {
+          if (d.historical_kw === null) return null;
+          return { ...d, forecast_kw: null, interval_error: null, corridor_range: null };
+        }
+        return {
+          ...d,
+          corridor_range: showConfidence ? d.corridor_range : null,
+          interval_error: showConfidence ? d.interval_error : null,
+        };
+      }
 
-    if (showForecast && i >= splitIndex) {
-      const forecastVal = d.simulated_kw;
-      lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
-      upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
-      corridor_range = [lower_kw, upper_kw];
-    }
+      let lower_kw: number | null = null;
+      let upper_kw: number | null = null;
+      let corridor_range: [number, number] | null = null;
 
-    if (!showForecast) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
-    }
-    if (i < splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
-    } else if (i === splitIndex) {
-      return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
-    } else {
-      return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
-    }
-  });
+      if (showForecast && !isSimulated && i >= splitIndex) {
+        const forecastVal = d.simulated_kw;
+        lower_kw = Math.max(0, Number((forecastVal + q10Offset).toFixed(1)));
+        upper_kw = Math.min(transformerCapacityKw * 1.15, Number((forecastVal + q90Offset).toFixed(1)));
+        corridor_range = [lower_kw, upper_kw];
+      }
+
+      if (!showForecast) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
+      }
+      if (i < splitIndex) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: null, lower_kw: null, upper_kw: null, corridor_range: null };
+      } else if (i === splitIndex) {
+        return { ...d, historical_kw: d.simulated_kw, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
+      } else {
+        return { ...d, historical_kw: null, forecast_kw: d.simulated_kw, lower_kw, upper_kw, corridor_range };
+      }
+    })
+    .filter((d): d is NonNullable<typeof d> => d !== null);
+
+  const isScenarioMode = !isSimulated && chartData.length > 0 && typeof (chartData[0] as any).time === 'number';
+  const lastPointTime = isScenarioMode ? (chartData[chartData.length - 1] as any).time : 0;
+  const scenarioNowMs = isScenarioMode ? lastPointTime - 120 * 60 * 1000 : 0;
+  const scenarioDomain: [number, number] = isScenarioMode
+    ? [scenarioNowMs - 120 * 60 * 1000, scenarioNowMs + 135 * 60 * 1000]
+    : [0, 0];
+  const scenarioTicks = isScenarioMode
+    ? [-120, -90, -60, -30, 0, 30, 60, 90, 120].map((m) => scenarioNowMs + m * 60 * 1000)
+    : undefined;
+  const forecastTimeMs = isScenarioMode ? lastPointTime : 0;
+
+  const scenarioLargestVal = Math.max(
+    transformerCapacityKw,
+    upperBoundKw ?? 0,
+    predictedLoadKw ?? 0,
+    ...chartData.flatMap((d: any) => [
+      d.historical_kw ?? 0,
+      d.forecast_kw ?? 0,
+      d.upper_kw ?? 0,
+      Array.isArray(d.corridor_range) ? d.corridor_range[1] ?? 0 : 0,
+    ])
+  );
+  const scenarioYMax = Math.ceil((scenarioLargestVal + 0.1) / 50) * 50;
+  const scenarioYTicks = Array.from({ length: Math.round(scenarioYMax / 50) + 1 }, (_, i) => i * 50);
 
   const handleExportCSV = () => {
     setIsDropdownOpen(false);
@@ -132,7 +174,7 @@ export function ForecastTimeline({
       return [isoTimestamp, kw, type, sourceStr].join(',');
     });
     const csvContent = [headers.join(','), ...rows].join('\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -151,7 +193,7 @@ export function ForecastTimeline({
     const path = document.querySelector('.forecast-line path') as SVGPathElement;
     if (path) {
       const length = path.getTotalLength();
-      
+
       animate(path, {
         strokeDashoffset: [length, 0],
         easing: 'easeOutQuad',
@@ -172,26 +214,28 @@ export function ForecastTimeline({
 
         {/* Screen reader summary */}
         <div className="sr-only">
-          24-Hour Load Forecast Timeline. Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW with empirical 80% prediction interval [{displayLower} kW to {displayUpper} kW], Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
+          Load Timeline (2h history + 2h forecast). Predicted load: {predictedLoadKw?.toFixed(1) || '--'} kW
+          {!isSimulated && ` with empirical 80% prediction interval [${displayLower} kW to ${displayUpper} kW]`},
+          Surge Risk Status: {surgeStatus}, Transformer Capacity: {transformerCapacityKw} kW.
         </div>
-        
+
         {/* Header row */}
         <div className="flex justify-between items-start mb-6 z-20 relative gap-2">
           <div>
-            <h3 className="font-headline-md text-headline-md text-text-primary">24-Hour Load Timeline</h3>
+            <h3 className="font-headline-md text-headline-md text-text-primary">Load Timeline (2h history + 2h forecast)</h3>
             <div className="font-label-mono text-xs text-text-secondary mt-2 flex items-center gap-2 sm:gap-4 flex-wrap">
               <span className="flex items-center gap-1.5 py-0.5">
-                <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--tw-shadow-color)] shadow-primary shrink-0" aria-hidden="true"></span> 
+                <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_var(--tw-shadow-color)] shadow-primary shrink-0" aria-hidden="true"></span>
                 <span>Actual</span>
               </span>
-              <button 
+              <button
                 type="button"
                 aria-pressed={showForecast}
                 onClick={() => setShowForecast(!showForecast)}
                 title={showForecast ? "Hide Forecast" : "Show Forecast"}
                 className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showForecast ? 'opacity-100 text-text-primary' : 'opacity-40 grayscale text-text-secondary'}`}
               >
-                <span className="w-2 h-2 rounded-full border border-secondary border-dashed shrink-0" aria-hidden="true"></span> 
+                <span className="w-2 h-2 rounded-full border border-secondary border-dashed shrink-0" aria-hidden="true"></span>
                 <span>Forecast (2h)</span>
                 {isSimulated && (
                   <span className="ml-1 bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-widest leading-none">
@@ -200,31 +244,37 @@ export function ForecastTimeline({
                 )}
               </button>
               {showForecast && (
-                <button
-                  type="button"
-                  aria-pressed={showConfidence}
-                  onClick={() => setShowConfidence(!showConfidence)}
-                  title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
-                  className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
-                >
-                  <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
-                  <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
-                </button>
+                isSimulated ? (
+                  <span className="text-xs text-text-secondary/70 italic py-0.5">
+                    Interval not available for simulated scenarios
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    aria-pressed={showConfidence}
+                    onClick={() => setShowConfidence(!showConfidence)}
+                    title={showConfidence ? "Hide Empirical 80% interval" : "Show Empirical 80% interval"}
+                    className={`flex items-center gap-1.5 cursor-pointer select-none transition-all hover:text-text-primary rounded px-1.5 py-0.5 min-h-[32px] focus-visible:ring-2 focus-visible:ring-primary ${showConfidence ? 'opacity-100 text-text-primary' : 'opacity-40 text-text-secondary'}`}
+                  >
+                    <span className="w-2.5 h-2 rounded bg-secondary/30 border border-secondary/50 shrink-0" aria-hidden="true"></span>
+                    <span className="text-left">Empirical 80% interval ({displayLower} – {displayUpper} kW)</span>
+                  </button>
+                )
               )}
             </div>
           </div>
-          
+
           <div className="relative" ref={dropdownRef}>
-            <button 
+            <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               className="p-2 border border-border-subtle rounded-lg hover:bg-surface-variant transition-colors text-text-secondary cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">more_horiz</span>
             </button>
-            
+
             {isDropdownOpen && (
               <div className="absolute right-0 top-full mt-2 w-56 bg-surface border border-border-subtle rounded-lg shadow-2xl z-50 overflow-hidden flex flex-col py-1">
-                <button 
+                <button
                   onClick={handleExportCSV}
                   className="px-4 py-2 text-left text-sm text-text-secondary hover:text-primary hover:bg-primary/10 transition-colors flex items-center gap-2 cursor-pointer"
                 >
@@ -261,23 +311,40 @@ export function ForecastTimeline({
                   <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              
+
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-              
-              <XAxis
-                dataKey="timestamp"
-                stroke="rgba(255,255,255,0.15)"
-                tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
-                tickFormatter={(val) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                axisLine={false}
-                tickLine={false}
-              />
-              
+
+              {isScenarioMode ? (
+                <XAxis
+                  dataKey="time"
+                  type="number"
+                  scale="time"
+                  domain={scenarioDomain}
+                  ticks={scenarioTicks}
+                  stroke="rgba(255,255,255,0.15)"
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
+                  tickFormatter={formatTimelineTimestamp}
+                  axisLine={false}
+                  tickLine={false}
+                />
+              ) : (
+                <XAxis
+                  dataKey="timestamp"
+                  stroke="rgba(255,255,255,0.15)"
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
+                  tickFormatter={formatTimelineTimestamp}
+                  axisLine={false}
+                  tickLine={false}
+                />
+              )}
+
               <YAxis
                 stroke="rgba(255,255,255,0.15)"
                 tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'var(--font-label-mono)' }}
                 axisLine={false}
                 tickLine={false}
+                domain={isScenarioMode ? [0, scenarioYMax] : [0, (dataMax: number) => Math.max(dataMax, transformerCapacityKw + 15, Math.ceil((upperBoundKw ?? 0) * 1.05))]}
+                ticks={isScenarioMode ? scenarioYTicks : undefined}
                 label={{
                   value: 'kW',
                   angle: -90,
@@ -287,7 +354,7 @@ export function ForecastTimeline({
                   fontFamily: 'var(--font-label-mono)',
                 }}
               />
-              
+
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
@@ -295,16 +362,17 @@ export function ForecastTimeline({
                     if (!item) return null;
                     const kwVal = item.forecast_kw ?? item.historical_kw;
                     const isForecastPoint = item.forecast_kw !== null && item.historical_kw === null;
+                    const timeLabel = item.timestamp ?? label;
                     return (
                       <div className="bg-surface/90 backdrop-blur-xl border border-border p-3 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.3)] min-w-[150px]">
                         <p className="text-text-secondary text-xs mb-1 font-label-mono">
-                          {label ? new Date(label as string | number).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {timeLabel ? formatTimelineTimestamp(timeLabel) : ''}
                           {isForecastPoint && <span className="ml-2 text-secondary font-bold">FORECAST</span>}
                         </p>
                         <p className="text-primary font-bold font-label-mono text-lg">
                           {kwVal} kW
                         </p>
-                        {isForecastPoint && item.lower_kw !== null && item.upper_kw !== null && (
+                        {isForecastPoint && !isSimulated && item.lower_kw !== null && item.upper_kw !== null && (
                           <p className="text-[11px] font-label-mono text-text-secondary mt-1 border-t border-border-subtle/50 pt-1">
                             Empirical 80% interval: <span className="text-secondary font-medium">{item.lower_kw} – {item.upper_kw} kW</span>
                           </p>
@@ -315,7 +383,22 @@ export function ForecastTimeline({
                   return null;
                 }}
               />
-              {showForecast && showConfidence && (
+              {/* Vertical confidence interval band at t+2h only in scenario mode */}
+              {showForecast && showConfidence && isScenarioMode && forecastTimeMs && lowerBoundKw !== undefined && upperBoundKw !== undefined && (
+                <ReferenceArea
+                  x1={forecastTimeMs - 3 * 60 * 1000}
+                  x2={forecastTimeMs + 3 * 60 * 1000}
+                  y1={lowerBoundKw}
+                  y2={upperBoundKw}
+                  fill="var(--color-secondary)"
+                  fillOpacity={0.2}
+                  stroke="var(--color-secondary)"
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.5}
+                />
+              )}
+              {showForecast && showConfidence && !isSimulated && !isScenarioMode && (
                 <Area
                   type="monotone"
                   dataKey="corridor_range"
@@ -338,16 +421,38 @@ export function ForecastTimeline({
               />
               {showForecast && (
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="forecast_kw"
                   stroke="var(--color-secondary)"
                   strokeWidth={3}
                   strokeDasharray="5 5"
-                  dot={{ r: 6, stroke: 'var(--color-secondary)', strokeWidth: 2, fill: 'var(--color-background)' }}
+                  dot={(props: any) => {
+                    if (props.payload?.historical_kw !== null) return null;
+                    return (
+                      <circle
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={6}
+                        stroke="var(--color-secondary)"
+                        strokeWidth={2}
+                        fill="var(--color-background)"
+                      />
+                    );
+                  }}
                   activeDot={{ r: 8, stroke: 'var(--color-secondary)', strokeWidth: 2, fill: 'var(--color-background)' }}
                   isAnimationActive={false}
                   className="forecast-line"
-                />
+                >
+                  {showConfidence && !isSimulated && (
+                    <ErrorBar
+                      dataKey="interval_error"
+                      direction="y"
+                      width={12}
+                      stroke="var(--color-secondary)"
+                      strokeWidth={2}
+                    />
+                  )}
+                </Line>
               )}
               {/* Reference line for capacity */}
               <ReferenceLine
@@ -369,20 +474,20 @@ export function ForecastTimeline({
         <h3 className="font-headline-md text-headline-md text-text-primary absolute top-6 left-6">
           Capacity Utilization
         </h3>
-        
+
         {/* Radial Gauge SVG */}
         <div className="relative w-48 h-48 mt-8 flex items-center justify-center">
           <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
             <circle cx="50" cy="50" fill="none" r="40" stroke="rgba(255,255,255,0.05)" strokeWidth="8"></circle>
-            <circle 
-              cx="50" 
-              cy="50" 
-              fill="none" 
-              r="40" 
-              stroke="url(#gaugeGrad)" 
-              strokeDasharray="251.2" 
-              strokeDashoffset={251.2 - (251.2 * (Math.min(capacityPct, 100) / 100))} 
-              strokeLinecap="round" 
+            <circle
+              cx="50"
+              cy="50"
+              fill="none"
+              r="40"
+              stroke="url(#gaugeGrad)"
+              strokeDasharray="251.2"
+              strokeDashoffset={251.2 - (251.2 * (Math.min(capacityPct, 100) / 100))}
+              strokeLinecap="round"
               strokeWidth="8"
               style={{ transition: 'stroke-dashoffset 0.5s ease-in-out' }}
             ></circle>
@@ -409,17 +514,17 @@ export function ForecastTimeline({
         </div>
       </Tile>
 
-      <Tile 
-        index={2} 
+      <Tile
+        index={2}
         className={`surge-glow-card ${isReport ? 'col-span-6' : 'md:col-span-4'} flex flex-col justify-between p-6 border-t-2 ${surgeStatus === 'CRITICAL' ? 'border-t-status-critical shadow-[0_0_30px_-10px_rgba(244,63,94,0.15)] shake' : surgeStatus === 'WARNING' ? 'border-t-status-warning shadow-[0_0_30px_-10px_rgba(245,158,11,0.15)]' : 'border-t-transparent'}`}
-        style={{ 
+        style={{
           '--pulse-duration': capacityPct >= settings.criticalThresholdPct ? '0.8s' : capacityPct >= settings.warningThresholdPct ? '1.5s' : '2.5s',
           '--glow-color': capacityPct >= settings.criticalThresholdPct ? 'rgba(244, 63, 94, 0.25)' : capacityPct >= settings.warningThresholdPct ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.1)'
         } as React.CSSProperties}
       >
         <div className="flex justify-between items-start">
           <h3 className="font-headline-md text-headline-md text-text-primary">Surge Risk & Tariff</h3>
-          
+
           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${surgeStatus === 'CRITICAL' ? 'bg-status-critical/10 border-status-critical/30' : surgeStatus === 'WARNING' ? 'bg-status-warning/10 border-status-warning/30' : 'bg-status-normal/10 border-status-normal/30'}`}>
             <span className={`material-symbols-outlined text-[16px] ${surgeStatus === 'CRITICAL' ? 'text-status-critical' : surgeStatus === 'WARNING' ? 'text-status-warning' : 'text-status-normal'}`} aria-hidden="true">
               {surgeStatus === 'CRITICAL' ? 'error' : surgeStatus === 'WARNING' ? 'warning' : 'check_circle'}
@@ -429,7 +534,7 @@ export function ForecastTimeline({
             </span>
           </div>
         </div>
-        
+
         <div className="mt-8 flex flex-col">
           <span className="font-label-mono text-label-mono text-text-secondary uppercase mb-2">Dynamic Multiplier</span>
           <div className="flex items-end gap-3">
@@ -444,8 +549,8 @@ export function ForecastTimeline({
       </Tile>
 
       {/* Mitigation Actions */}
-      <Tile 
-        index={3} 
+      <Tile
+        index={3}
         className={`${isReport ? 'col-span-6' : 'md:col-span-4'} flex flex-col p-6 border-t-2 ${recommendedActions.throttle_active ? 'border-t-status-warning shadow-[0_0_30px_-10px_rgba(245,158,11,0.15)]' : recommendedActions.shed_stalls.length > 0 ? 'border-t-status-critical shadow-[0_0_30px_-10px_rgba(244,63,94,0.15)]' : 'border-t-transparent'}`}
       >
         <div className="flex justify-between items-start mb-6">
@@ -485,8 +590,8 @@ export function ForecastTimeline({
                         <span>Normal: 150 kW</span>
                       </div>
                       <div className="w-full bg-surface h-1.5 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-status-warning h-full rounded-full transition-all duration-500" 
+                        <div
+                          className="bg-status-warning h-full rounded-full transition-all duration-500"
                           style={{ width: `${(recommendedActions.per_stall_cap_kw / 150) * 100}%` }}
                         ></div>
                       </div>
@@ -514,15 +619,15 @@ export function ForecastTimeline({
                     )}
                   </div>
                   {recommendedActions.shed_stalls.length > 0 ? (
-                     <div className="flex flex-wrap gap-1 mt-1">
-                       {recommendedActions.shed_stalls.map(bay => (
-                         <span key={bay} className="bg-status-critical/20 border border-status-critical/30 text-status-critical px-1.5 py-0.5 rounded text-[10px] font-bold font-label-mono uppercase">
-                           Bay {bay}
-                         </span>
-                       ))}
-                     </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {recommendedActions.shed_stalls.map(bay => (
+                        <span key={bay} className="bg-status-critical/20 border border-status-critical/30 text-status-critical px-1.5 py-0.5 rounded text-[10px] font-bold font-label-mono uppercase">
+                          Bay {bay}
+                        </span>
+                      ))}
+                    </div>
                   ) : (
-                     <span className="font-body-sm text-text-secondary text-xs mt-0.5">No bays shed</span>
+                    <span className="font-body-sm text-text-secondary text-xs mt-0.5">No bays shed</span>
                   )}
                 </div>
               </div>
@@ -535,13 +640,13 @@ export function ForecastTimeline({
       {bayMatrixSection}
 
       {/* Recent Surge Events */}
-      <Tile 
-        index={4} 
+      <Tile
+        index={4}
         className={`${isReport ? 'col-span-12' : 'md:col-span-4'} flex flex-col min-h-50 border-t-2 border-t-transparent`}
       >
         <div className="flex justify-between items-start mb-6">
           <h3 className="font-headline-md text-headline-md text-text-primary">Recent Surge Events</h3>
-          <span 
+          <span
             onClick={() => setIsEventModalOpen(true)}
             title="View Full History"
             className="material-symbols-outlined text-text-secondary cursor-pointer hover:text-primary transition-colors"
@@ -552,32 +657,32 @@ export function ForecastTimeline({
 
         {recentEvents.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-text-secondary h-full">
-             <span className="material-symbols-outlined text-4xl mb-2 opacity-50" style={{ fontVariationSettings: "'FILL' 0, 'wght' 200" }}>schedule</span>
-             <span className="font-body-md">No recent events</span>
+            <span className="material-symbols-outlined text-4xl mb-2 opacity-50" style={{ fontVariationSettings: "'FILL' 0, 'wght' 200" }}>schedule</span>
+            <span className="font-body-md">No recent events</span>
           </div>
         ) : (
           <div className={`grid ${isReport ? 'grid-cols-2 gap-3 max-h-none' : 'grid-cols-1 gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar'}`}>
             {recentEvents.slice(0, 5).map((event, idx) => {
               const minDiff = Math.floor((Date.now() - new Date(event.timestamp).getTime()) / 60000);
-              const relTime = minDiff === 0 ? 'Just now' : minDiff < 60 ? `${minDiff}m ago` : `${Math.floor(minDiff/60)}h ${minDiff%60}m ago`;
+              const relTime = minDiff === 0 ? 'Just now' : minDiff < 60 ? `${minDiff}m ago` : `${Math.floor(minDiff / 60)}h ${minDiff % 60}m ago`;
               return (
                 <div key={idx} className="flex justify-between items-center p-3 rounded-lg bg-surface-variant/30 border border-border-subtle/50">
                   <div className="flex flex-col">
-                     <div className="flex items-center gap-2">
-                       <div className={`w-2 h-2 rounded-full ${event.status === 'CRITICAL' ? 'bg-status-critical' : 'bg-status-warning'}`}></div>
-                       <span className={`font-label-mono font-bold text-xs ${event.status === 'CRITICAL' ? 'text-status-critical' : 'text-status-warning'}`}>
-                         {event.status}
-                       </span>
-                     </div>
-                     <span className="font-label-mono text-text-secondary text-[10px] mt-1" title={new Date(event.timestamp).toLocaleTimeString()}>
-                       {relTime}
-                     </span>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${event.status === 'CRITICAL' ? 'bg-status-critical' : 'bg-status-warning'}`}></div>
+                      <span className={`font-label-mono font-bold text-xs ${event.status === 'CRITICAL' ? 'text-status-critical' : 'text-status-warning'}`}>
+                        {event.status}
+                      </span>
+                    </div>
+                    <span className="font-label-mono text-text-secondary text-[10px] mt-1" title={new Date(event.timestamp).toLocaleTimeString()}>
+                      {relTime}
+                    </span>
                   </div>
                   <div className="text-right">
-                     <span className="font-label-mono text-text-primary text-xs tracking-wider">TARIFF</span>
-                     <div className="font-kpi-large text-status-warning leading-none tabular-nums text-sm">
-                       x{event.multiplier.toFixed(2)}
-                     </div>
+                    <span className="font-label-mono text-text-primary text-xs tracking-wider">TARIFF</span>
+                    <div className="font-kpi-large text-status-warning leading-none tabular-nums text-sm">
+                      x{event.multiplier.toFixed(2)}
+                    </div>
                   </div>
                 </div>
               );
@@ -595,42 +700,42 @@ export function ForecastTimeline({
                 <span className="material-symbols-outlined text-primary">history</span>
                 Session Event History
               </h2>
-              <button 
+              <button
                 onClick={() => setIsEventModalOpen(false)}
                 className="text-text-secondary hover:text-primary transition-colors cursor-pointer"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            
+
             <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar flex flex-col gap-3">
               {recentEvents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-text-secondary py-12">
-                   <span className="material-symbols-outlined text-4xl mb-2 opacity-50" style={{ fontVariationSettings: "'FILL' 0, 'wght' 200" }}>schedule</span>
-                   <span className="font-body-md">No events recorded this session</span>
+                  <span className="material-symbols-outlined text-4xl mb-2 opacity-50" style={{ fontVariationSettings: "'FILL' 0, 'wght' 200" }}>schedule</span>
+                  <span className="font-body-md">No events recorded this session</span>
                 </div>
               ) : (
                 recentEvents.map((event, idx) => {
                   const minDiff = Math.floor((Date.now() - new Date(event.timestamp).getTime()) / 60000);
-                  const relTime = minDiff === 0 ? 'Just now' : minDiff < 60 ? `${minDiff}m ago` : `${Math.floor(minDiff/60)}h ${minDiff%60}m ago`;
+                  const relTime = minDiff === 0 ? 'Just now' : minDiff < 60 ? `${minDiff}m ago` : `${Math.floor(minDiff / 60)}h ${minDiff % 60}m ago`;
                   return (
                     <div key={idx} className="flex justify-between items-center p-3 rounded-lg bg-surface-variant/30 border border-border-subtle/50">
                       <div className="flex flex-col">
-                         <div className="flex items-center gap-2">
-                           <div className={`w-2 h-2 rounded-full ${event.status === 'CRITICAL' ? 'bg-status-critical' : 'bg-status-warning'}`}></div>
-                           <span className={`font-label-mono font-bold text-xs ${event.status === 'CRITICAL' ? 'text-status-critical' : 'text-status-warning'}`}>
-                             {event.status}
-                           </span>
-                         </div>
-                         <span className="font-label-mono text-text-secondary text-[10px] mt-1" title={new Date(event.timestamp).toLocaleTimeString()}>
-                           {relTime}
-                         </span>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${event.status === 'CRITICAL' ? 'bg-status-critical' : 'bg-status-warning'}`}></div>
+                          <span className={`font-label-mono font-bold text-xs ${event.status === 'CRITICAL' ? 'text-status-critical' : 'text-status-warning'}`}>
+                            {event.status}
+                          </span>
+                        </div>
+                        <span className="font-label-mono text-text-secondary text-[10px] mt-1" title={new Date(event.timestamp).toLocaleTimeString()}>
+                          {relTime}
+                        </span>
                       </div>
                       <div className="text-right">
-                         <span className="font-label-mono text-text-primary text-xs tracking-wider">TARIFF</span>
-                         <div className="font-kpi-large text-status-warning leading-none tabular-nums text-sm">
-                           x{event.multiplier.toFixed(2)}
-                         </div>
+                        <span className="font-label-mono text-text-primary text-xs tracking-wider">TARIFF</span>
+                        <div className="font-kpi-large text-status-warning leading-none tabular-nums text-sm">
+                          x{event.multiplier.toFixed(2)}
+                        </div>
                       </div>
                     </div>
                   );

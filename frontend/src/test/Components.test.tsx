@@ -84,13 +84,15 @@ describe('Dashboard Visual Components', () => {
       { feature: 'grid_frequency_hz', value: -0.05, shap_delta_kw: -0.8 },
       { feature: 'active_plugs', value: 0.90, shap_delta_kw: 8.3 },
       { feature: 'plug_delta_15m', value: 0.20, shap_delta_kw: 1.1 },
+      { feature: 'load_anomaly', value: 1.05, shap_delta_kw: 4.2 },
+      { feature: 'lag_trend', value: 0.15, shap_delta_kw: 2.3 },
       { feature: 'hour_sin', value: -0.71, shap_delta_kw: -3.5 },
       { feature: 'hour_cos', value: 0.71, shap_delta_kw: 2.7 },
       { feature: 'day_sin', value: 0.43, shap_delta_kw: 1.0 },
       { feature: 'day_cos', value: -0.90, shap_delta_kw: -2.3 },
     ];
 
-    it('renders all 15 feature attribution labels in the waterfall chart', () => {
+    it('renders all 17 feature attribution labels in the waterfall chart', () => {
       render(
         <ShapWaterfall
           baseValue={142.5}
@@ -103,12 +105,12 @@ describe('Dashboard Visual Components', () => {
       expect(screen.getByText('BASE VALUE')).toBeInTheDocument();
       expect(screen.getByText('PREDICTION')).toBeInTheDocument();
 
-      // Verify all 15 readable feature names render
+      // Verify all 17 readable feature names render
       const expectedReadableNames = mockAttributions.map((a) =>
         getFeatureReadableName(a.feature)
       );
 
-      expect(expectedReadableNames).toHaveLength(15);
+      expect(expectedReadableNames).toHaveLength(17);
       for (const name of expectedReadableNames) {
         expect(screen.getByText(name)).toBeInTheDocument();
       }
@@ -238,7 +240,7 @@ describe('Dashboard Visual Components', () => {
     describe('GlobalShapImportance component rendering', () => {
       it('renders the header, summary chips, caveat, and accessible sr-only table', async () => {
         const mockApiResponse = {
-          total_features: 15,
+          total_features: 17,
           sample_size: 200,
           n_samples: 200,
           split_name: 'test',

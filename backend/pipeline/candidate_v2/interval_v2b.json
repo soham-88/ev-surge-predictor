@@ -1,0 +1,75 @@
+{
+  "candidate_model": "xgb_v2b.joblib",
+  "feature_names_file": "feature_names_v2b.json",
+  "calibration_timestamp_utc": "2026-11-18T07:53:29.745032+00:00",
+  "nominal_coverage": 0.8,
+  "single_interval": {
+    "q10_kw": -20.3368,
+    "q90_kw": 19.8005,
+    "width_kw": 40.1373,
+    "test_coverage_overall": 0.7973,
+    "test_coverage_by_bin": {
+      "<100": 0.8235,
+      "100-160": 0.7846,
+      ">=160": 0.7363
+    },
+    "test_coverage_by_day_type": {
+      "normal": 0.8032290615539859,
+      "event": 0.7733160621761658,
+      "low": 0.7602564102564102
+    },
+    "test_coverage_actual_ge_200": 0.7321
+  },
+  "binned_interval": {
+    "bins": [
+      {
+        "name": "<100",
+        "pred_min_kw": null,
+        "pred_max_kw": 100.0,
+        "q10_kw": -19.6887,
+        "q90_kw": 18.7102,
+        "width_kw": 38.399,
+        "val_count": 4615,
+        "test_count": 5004,
+        "test_coverage": 0.8034
+      },
+      {
+        "name": "100-160",
+        "pred_min_kw": 100.0,
+        "pred_max_kw": 160.0,
+        "q10_kw": -19.6679,
+        "q90_kw": 20.7055,
+        "width_kw": 40.3734,
+        "val_count": 2971,
+        "test_count": 2929,
+        "test_coverage": 0.7897
+      },
+      {
+        "name": ">=160",
+        "pred_min_kw": 160.0,
+        "pred_max_kw": null,
+        "q10_kw": -23.001,
+        "q90_kw": 22.3162,
+        "width_kw": 45.3172,
+        "val_count": 1834,
+        "test_count": 1547,
+        "test_coverage": 0.7951
+      }
+    ],
+    "test_coverage_overall": 0.7978,
+    "mean_test_width_overall": 40.138,
+    "test_coverage_by_day_type": {
+      "normal": 0.8053733602421796,
+      "event": 0.7746113989637305,
+      "low": 0.7435897435897436
+    },
+    "test_coverage_actual_ge_200": 0.7821
+  },
+  "gate_block": {
+    "gate_overall_pass": true,
+    "gate_b1_pass": true,
+    "gate_b2_pass": true,
+    "gate_b3_pass": true,
+    "all_gates_pass": true
+  }
+}

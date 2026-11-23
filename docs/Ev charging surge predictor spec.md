@@ -1,3 +1,5 @@
+> **Note:** v1 specification; superseded by docs/MODEL_V2.md for the model, data and evaluation.
+
 EV Charging Station Smart Load & Surge Predictor
 
 Intelligent Grid Operations, Predictive Load Forecasting & Autonomous Throttling Platform

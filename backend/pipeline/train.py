@@ -45,6 +45,7 @@ SAVED_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 from latency_utils import measure_inference_latency
+from generator_v2 import synthesize_telemetry_v2, split_by_day
 
 
 # ──────────────────────────────────────────────────────────────

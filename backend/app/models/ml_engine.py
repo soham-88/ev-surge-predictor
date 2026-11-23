@@ -6,6 +6,7 @@ prediction + SHAP explanation methods for the FastAPI endpoints.
 from __future__ import annotations
 
 import time
+import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
@@ -13,8 +14,116 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from app.core.config import SAVED_MODELS_DIR
+from app.core import config as app_config
+from app.core.config import SAVED_MODELS_DIR, BACKEND_DIR
 from app.core.timezone import to_station_local
+
+logger = logging.getLogger(__name__)
+
+
+def assemble_features_df(
+    df: pd.DataFrame,
+    is_batch: bool = False,
+    how_table: Any = None,
+    feature_names: List[str] | None = None,
+    prev_active_plugs: int | float | None = None,
+) -> pd.DataFrame:
+    """Build the feature dataframe matching FEATURE_COLUMNS (15) or v2 (17).
+
+    Shared logic for training, single-row (live), and multi-row (batch) predictions.
+    If how_table is None: returns the 15-element feature dataframe, preserving existing behavior.
+    If how_table is provided: adds two derived features (load_anomaly, lag_trend) using
+    station-local time via to_station_local:
+      - load_anomaly = lag_15 - HoW(t - 15 min)
+      - lag_trend = lag_15 - lag_60
+    """
+    # 1. Cyclical time encoding
+    if "timestamp" in df.columns:
+        timestamps = to_station_local(df["timestamp"])
+        hour = timestamps.dt.hour + timestamps.dt.minute / 60.0
+        day_of_week = timestamps.dt.dayofweek
+    else:
+        timestamps = None
+        hour = df["hour"]
+        day_of_week = df["day_of_week"]
+
+    hour_sin = np.sin(2 * np.pi * hour / 24)
+    hour_cos = np.cos(2 * np.pi * hour / 24)
+    day_sin = np.sin(2 * np.pi * day_of_week / 7)
+    day_cos = np.cos(2 * np.pi * day_of_week / 7)
+
+    # 2. Rolling features
+    lags_df = df[["load_lag_15m", "load_lag_30m", "load_lag_45m", "load_lag_60m"]]
+    rolling_mean_60m = lags_df.mean(axis=1)
+    rolling_std_60m = lags_df.std(axis=1, ddof=1)
+
+    # 3. Plug delta
+    if how_table is not None:
+        if is_batch:
+            plug_delta_15m = df["active_plugs"].diff(1).fillna(0)
+        else:
+            if prev_active_plugs is not None:
+                plug_delta_15m = (df["active_plugs"] - float(prev_active_plugs)).astype(float)
+            else:
+                plug_delta_15m = 0.0
+    else:
+        if is_batch:
+            plug_delta_15m = df["active_plugs"].diff(1).fillna(0)
+        else:
+            plug_delta_15m = (df["active_plugs"] - 4).clip(lower=0)
+
+    # 4. Assemble in exact order
+    features_dict = {
+        "ambient_temp_c": df["ambient_temp_c"],
+        "traffic_inflow_index": df["traffic_inflow_index"],
+        "active_plugs": df["active_plugs"],
+        "grid_frequency_hz": df["grid_frequency_hz"],
+        "load_lag_15m": df["load_lag_15m"],
+        "load_lag_30m": df["load_lag_30m"],
+        "load_lag_45m": df["load_lag_45m"],
+        "load_lag_60m": df["load_lag_60m"],
+        "rolling_mean_60m": rolling_mean_60m,
+        "rolling_std_60m": rolling_std_60m,
+        "plug_delta_15m": plug_delta_15m,
+        "hour_sin": hour_sin,
+        "hour_cos": hour_cos,
+        "day_sin": day_sin,
+        "day_cos": day_cos,
+    }
+
+    if how_table is not None:
+        from pipeline.generator_v2 import lookup_hour_of_week_mean
+
+        if timestamps is not None:
+            ts_minus_15 = timestamps - pd.Timedelta(minutes=15)
+            how_m15 = lookup_hour_of_week_mean(how_table, ts_minus_15)
+        else:
+            # Single-row or batch without timestamp: construct station-local reference
+            ref_dt = pd.to_datetime("2025-01-06 00:00:00")  # Monday
+            h_vals = np.asarray(hour, dtype=np.float64)
+            d_vals = np.asarray(day_of_week, dtype=np.int32)
+            ts_arr = [
+                ref_dt + pd.Timedelta(days=int(d), minutes=float(h * 60.0) - 15.0)
+                for d, h in zip(d_vals, h_vals)
+            ]
+            how_m15 = lookup_hour_of_week_mean(how_table, pd.Series(ts_arr))
+
+        features_dict["load_anomaly"] = df["load_lag_15m"] - how_m15
+        features_dict["lag_trend"] = df["load_lag_15m"] - df["load_lag_60m"]
+
+    features_df = pd.DataFrame(features_dict)
+
+    if how_table is None:
+        if feature_names:
+            return features_df[feature_names]
+        return features_df
+
+    target_cols = (
+        feature_names + ["load_anomaly", "lag_trend"]
+        if feature_names and "load_anomaly" not in feature_names
+        else (feature_names if feature_names else list(features_dict.keys()))
+    )
+    return features_df[target_cols]
 
 
 class MLEngine:
@@ -22,107 +131,130 @@ class MLEngine:
 
     def __init__(self) -> None:
         self._model = None
-        self._scaler = None
+        self._how_table = None
         self._explainer = None
         self._feature_names: List[str] = []
         self._training_metrics: Dict = {}
+        self._interval_calibration: Dict[str, Any] = {}
         self._global_shap_cache: Dict[str, Any] | None = None
         self._loaded = False
 
-    def load(self) -> None:
-        """Load all .joblib artifacts from disk."""
-        if self._loaded:
+    def load(self, force_reload: bool = False) -> None:
+        """Load all .joblib artifacts from disk and run startup validation."""
+        if self._loaded and not force_reload:
             return
 
-        model_path = SAVED_MODELS_DIR / "xgboost_model.joblib"
+        models_dir = getattr(app_config, "SAVED_MODELS_DIR", SAVED_MODELS_DIR)
+
+        model_path = models_dir / "xgboost_model.joblib"
         if not model_path.exists():
             raise FileNotFoundError(
-                f"Model artifacts not found at {SAVED_MODELS_DIR}. "
+                f"Model artifacts not found at {models_dir}. "
                 "Run `python -m backend.pipeline.train` first."
             )
 
-        self._model = joblib.load(SAVED_MODELS_DIR / "xgboost_model.joblib")
-        self._scaler = joblib.load(SAVED_MODELS_DIR / "scaler.joblib")
-        shap_path = SAVED_MODELS_DIR / "shap_explainer.joblib"
+        self._model = joblib.load(model_path)
+        
+        how_path = models_dir / "hour_of_week_mean.joblib"
+        if not how_path.exists():
+            raise FileNotFoundError(f"Hour-of-week table not found at {how_path}.")
+        self._how_table = joblib.load(how_path)
+
+        self._feature_names = joblib.load(models_dir / "feature_names.joblib")
+
+        # Startup validation: fail fast with clear messages
+        if len(self._feature_names) != self._model.n_features_in_:
+            raise ValueError(
+                f"Feature count mismatch: {len(self._feature_names)} feature names loaded, "
+                f"but model expects {self._model.n_features_in_} features."
+            )
+
+        shap_path = models_dir / "shap_explainer.joblib"
+        self._explainer = None
         if shap_path.exists():
-            self._explainer = joblib.load(shap_path)
-        else:
+            try:
+                candidate_exp = joblib.load(shap_path)
+                test_shap = candidate_exp.shap_values(np.zeros((1, len(self._feature_names))))
+                if test_shap.shape[1] == len(self._feature_names):
+                    self._explainer = candidate_exp
+                else:
+                    logger.warning(
+                        f"Stored shap_explainer feature count ({test_shap.shape[1]}) != {len(self._feature_names)}; "
+                        "building in-memory TreeExplainer."
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Stored shap_explainer.joblib unreadable or invalid ({e}); "
+                    "building in-memory TreeExplainer."
+                )
+
+        if self._explainer is None:
+            logger.warning(
+                "shap_explainer.joblib missing or unavailable; building in-memory TreeExplainer from XGBoost model."
+            )
             import shap
             self._explainer = shap.TreeExplainer(self._model)
-        self._feature_names = joblib.load(SAVED_MODELS_DIR / "feature_names.joblib")
-        self._training_metrics = joblib.load(SAVED_MODELS_DIR / "training_metrics.joblib")
-        cal_path = SAVED_MODELS_DIR / "interval_calibration.joblib"
+
+        metrics_path = models_dir / "training_metrics.joblib"
+        if metrics_path.exists():
+            self._training_metrics = joblib.load(metrics_path)
+        else:
+            self._training_metrics = {}
+
+        cal_path = models_dir / "interval_calibration.joblib"
         if cal_path.exists():
             self._interval_calibration = joblib.load(cal_path)
         else:
             self._interval_calibration = {
-                "q10_kw": -10.922,
-                "q90_kw": 16.583,
-                "coverage": 0.7995,
-                "n_test": 1726,
+                "q10_kw": -20.337,
+                "q90_kw": 19.801,
+                "coverage": 0.797,
+                "n_test": 9210,
             }
+
+        try:
+            test_shap = self._explainer.shap_values(np.zeros((1, len(self._feature_names))))
+            if test_shap.shape[1] != len(self._feature_names):
+                raise ValueError(
+                    f"Explainer output dimension {test_shap.shape[1]} does not match feature count {len(self._feature_names)}."
+                )
+        except Exception as e:
+            raise ValueError(
+                f"SHAP explainer feature validation failed for {len(self._feature_names)} features: {e}"
+            ) from e
+
+        if self._how_table is None or len(self._how_table) != 168:
+            how_len = len(self._how_table) if self._how_table is not None else 0
+            raise ValueError(
+                f"Hour-of-week table must contain 168 cells (7 days x 24 hours), but found {how_len}."
+            )
+
         self._loaded = True
 
     # ── Feature Assembly ──────────────────────────────────────
 
     def _assemble_features_df(
-        self, df: pd.DataFrame, is_batch: bool = False
+        self,
+        df: pd.DataFrame,
+        is_batch: bool = False,
+        how_table: Any = None,
+        prev_active_plugs: int | float | None = None,
     ) -> pd.DataFrame:
-        """Build the 15-element feature dataframe matching train.py FEATURE_COLUMNS.
-        
-        Shared logic for both single-row (live) and multi-row (batch) predictions.
-        Where paths diverge (e.g. plug_delta_15m needing consecutive rows for diff),
-        it branches explicitly on `is_batch`.
+        """Build the feature dataframe.
+
+        If how_table is None: returns the 15-element feature dataframe matching
+        train.py FEATURE_COLUMNS, preserving exact existing behavior.
+        If how_table is provided: adds two derived features (load_anomaly, lag_trend)
+        using station-local time via to_station_local, producing 17 features total.
         """
-        # 1. Cyclical time encoding
-        if 'timestamp' in df.columns:
-            timestamps = to_station_local(df['timestamp'])
-            hour = timestamps.dt.hour + timestamps.dt.minute / 60.0
-            day_of_week = timestamps.dt.dayofweek
-        else:
-            hour = df['hour']
-            day_of_week = df['day_of_week']
-
-        hour_sin = np.sin(2 * np.pi * hour / 24)
-        hour_cos = np.cos(2 * np.pi * hour / 24)
-        day_sin = np.sin(2 * np.pi * day_of_week / 7)
-        day_cos = np.cos(2 * np.pi * day_of_week / 7)
-
-        # 2. Rolling features
-        lags_df = df[['load_lag_15m', 'load_lag_30m', 'load_lag_45m', 'load_lag_60m']]
-        rolling_mean_60m = lags_df.mean(axis=1)
-        # Using ddof=1 to match pandas default in train.py. If a single row, 
-        # lags_df.std(axis=1) across the 4 lag columns still works correctly.
-        rolling_std_60m = lags_df.std(axis=1, ddof=1)
-
-        # 3. Plug delta
-        if is_batch:
-            # Batch has consecutive rows, so we can diff exactly
-            plug_delta_15m = df["active_plugs"].diff(1).fillna(0)
-        else:
-            # Single-row live prediction lacks history, use heuristic
-            plug_delta_15m = (df["active_plugs"] - 4).clip(lower=0)
-
-        # 4. Assemble in exact order
-        features_df = pd.DataFrame({
-            "ambient_temp_c": df["ambient_temp_c"],
-            "traffic_inflow_index": df["traffic_inflow_index"],
-            "active_plugs": df["active_plugs"],
-            "grid_frequency_hz": df["grid_frequency_hz"],
-            "load_lag_15m": df["load_lag_15m"],
-            "load_lag_30m": df["load_lag_30m"],
-            "load_lag_45m": df["load_lag_45m"],
-            "load_lag_60m": df["load_lag_60m"],
-            "rolling_mean_60m": rolling_mean_60m,
-            "rolling_std_60m": rolling_std_60m,
-            "plug_delta_15m": plug_delta_15m,
-            "hour_sin": hour_sin,
-            "hour_cos": hour_cos,
-            "day_sin": day_sin,
-            "day_cos": day_cos,
-        })
-        
-        return features_df[self._feature_names]
+        target_fnames = self._feature_names if how_table is not None else None
+        return assemble_features_df(
+            df=df,
+            is_batch=is_batch,
+            how_table=how_table,
+            feature_names=target_fnames,
+            prev_active_plugs=prev_active_plugs,
+        )
 
     # ── Prediction ────────────────────────────────────────────
 
@@ -135,11 +267,13 @@ class MLEngine:
         load_lags_kw: List[float],
         hour: float,
         day_of_week: int,
+        timestamp: Any = None,
+        prev_active_plugs: int | float | None = None,
     ) -> Tuple[float, float, np.ndarray]:
-        """Run inference. Returns (predicted_load_kw, latency_ms, scaled_features)."""
+        """Run inference on unscaled features. Returns (predicted_load_kw, latency_ms, raw_features)."""
         self.load()
 
-        df = pd.DataFrame([{
+        row_dict = {
             "ambient_temp_c": ambient_temp_c,
             "traffic_inflow_index": traffic_inflow_index,
             "active_plugs": active_plugs,
@@ -150,49 +284,86 @@ class MLEngine:
             "load_lag_60m": load_lags_kw[3],
             "hour": hour,
             "day_of_week": day_of_week,
-        }])
-        
-        features_df = self._assemble_features_df(df, is_batch=False)
-        scaled = self._scaler.transform(features_df)
+        }
+        if timestamp is not None:
+            row_dict["timestamp"] = timestamp
+
+        df = pd.DataFrame([row_dict])
+
+        features_df = assemble_features_df(
+            df,
+            is_batch=False,
+            how_table=self._how_table,
+            feature_names=self._feature_names,
+            prev_active_plugs=prev_active_plugs,
+        )
 
         t0 = time.perf_counter()
-        pred = self._model.predict(scaled)
-        latency_ms = (time.perf_counter() - t0) * 1000
+        pred = self._model.predict(features_df)
+        latency_ms = (time.perf_counter() - t0) * 1000.0
 
-        return float(pred[0]), latency_ms, scaled
+        raw_features = features_df.values.astype(np.float64)
+        return float(pred[0]), latency_ms, raw_features
 
     def predict_batch(self, df: pd.DataFrame) -> Tuple[np.ndarray, float]:
-        """Run inference on an entire pandas DataFrame in one vectorized call.
-        
-        Assumes df already contains all required feature columns in exact order
-        or can be assembled into the correct shape.
-        """
+        """Run inference on an entire pandas DataFrame in one vectorized call."""
         self.load()
 
-        # Assemble features using shared logic
-        features_df = self._assemble_features_df(df, is_batch=True)
-        
-        # Scale
-        scaled = self._scaler.transform(features_df)
-        
-        # Predict
+        # Assemble features using shared logic with how_table
+        features_df = assemble_features_df(
+            df,
+            is_batch=True,
+            how_table=self._how_table,
+            feature_names=self._feature_names,
+        )
+
         t0 = time.perf_counter()
-        preds = self._model.predict(scaled)
-        latency_ms = (time.perf_counter() - t0) * 1000
-        
+        preds = self._model.predict(features_df)
+        latency_ms = (time.perf_counter() - t0) * 1000.0
+
         return preds, latency_ms
 
     def get_prediction_interval(self, predicted_load_kw: float) -> Tuple[float, float]:
         """Calculate dynamic empirical quantile bounds [lower, upper] for predicted load.
-        
-        lower_bound = max(0.0, predicted + q10)
-        upper_bound = predicted + q90
+
+        Bins by PREDICTED load:
+          - < 100 kW
+          - 100 to 160 kW
+          - >= 160 kW
+        Falls back to single interval if 'bins' is missing.
+        Lower bound is clipped to >= 0; upper bound is guaranteed >= predicted_load_kw.
         """
         self.load()
-        q10 = float(self._interval_calibration.get("q10_kw", -10.922))
-        q90 = float(self._interval_calibration.get("q90_kw", 16.583))
+        bins = self._interval_calibration.get("bins")
+        q10 = None
+        q90 = None
+
+        if bins:
+            for b in bins:
+                p_min = b.get("pred_min_kw")
+                p_max = b.get("pred_max_kw")
+                if p_min is None and p_max is not None:
+                    if predicted_load_kw < p_max:
+                        q10 = float(b["q10_kw"])
+                        q90 = float(b["q90_kw"])
+                        break
+                elif p_min is not None and p_max is not None:
+                    if p_min <= predicted_load_kw < p_max:
+                        q10 = float(b["q10_kw"])
+                        q90 = float(b["q90_kw"])
+                        break
+                elif p_min is not None and p_max is None:
+                    if predicted_load_kw >= p_min:
+                        q10 = float(b["q10_kw"])
+                        q90 = float(b["q90_kw"])
+                        break
+
+        if q10 is None or q90 is None:
+            q10 = float(self._interval_calibration.get("q10_kw", -20.337))
+            q90 = float(self._interval_calibration.get("q90_kw", 19.801))
+
         lower = max(0.0, round(predicted_load_kw + q10, 1))
-        upper = round(predicted_load_kw + q90, 1)
+        upper = max(predicted_load_kw, round(predicted_load_kw + q90, 1))
         return lower, upper
 
     @property
@@ -202,21 +373,21 @@ class MLEngine:
 
     # ── SHAP Explanation ──────────────────────────────────────
 
-    def explain(self, scaled_features: np.ndarray) -> Tuple[float, List[dict]]:
-        """Compute TreeSHAP attributions for a single observation.
+    def explain(self, raw_features: np.ndarray) -> Tuple[float, List[dict]]:
+        """Compute TreeSHAP attributions for a single observation using unscaled raw features.
 
         Returns (base_value, list of {feature, value, shap_delta_kw}).
         """
         self.load()
 
-        shap_values = self._explainer.shap_values(scaled_features)
+        shap_values = self._explainer.shap_values(raw_features)
         base_value = float(self._explainer.expected_value)
 
         attributions = []
         for i, fname in enumerate(self._feature_names):
             attributions.append({
                 "feature": fname,
-                "value": round(float(scaled_features[0, i]), 4),
+                "value": round(float(raw_features[0, i]), 4),
                 "shap_delta_kw": round(float(shap_values[0, i]), 4),
             })
 
@@ -226,47 +397,56 @@ class MLEngine:
         return base_value, attributions
 
     def get_global_shap_importance(self) -> Dict[str, Any]:
-        """Compute or return cached global TreeSHAP feature importances across all 15 features."""
+        """Compute or return cached global TreeSHAP feature importances across all 17 features."""
         self.load()
         if self._global_shap_cache is not None:
             return self._global_shap_cache
 
-        global_path = SAVED_MODELS_DIR / "global_shap_importance.joblib"
+        models_dir = getattr(app_config, "SAVED_MODELS_DIR", SAVED_MODELS_DIR)
+        global_path = models_dir / "global_shap_importance.joblib"
         if global_path.exists():
             cached = joblib.load(global_path)
             cached.setdefault("n_samples", cached.get("sample_size", 200))
             cached.setdefault("split_name", "test")
-            cached.setdefault("total_test_rows", self.training_metrics.get("n_test", 1726))
+            cached.setdefault("total_test_rows", self.training_metrics.get("n_test", 9210))
             self._global_shap_cache = cached
             return self._global_shap_cache
 
-        total_test_rows = self.training_metrics.get("n_test", 1726)
-        n_train = self.training_metrics.get("n_train", 6902)
-        target_sample_size = 200
-        split_name = "test"
-        n_samples = 0
+        # Fallback if cache file is missing: compute from backend/tests/fixtures/v2_test_sample.csv
+        fixture_path = BACKEND_DIR / "tests" / "fixtures" / "v2_test_sample.csv"
+        total_test_rows = self.training_metrics.get("n_test", 9210)
 
-        try:
-            from pipeline.train import synthesize_telemetry, engineer_features, FEATURE_COLUMNS
-            df_raw = synthesize_telemetry(n_days=90, seed=42)
-            df_feat = engineer_features(df_raw)
-            df_test = df_feat.iloc[n_train:]
-            total_test_rows = len(df_test)
-            sample_count = min(target_sample_size, total_test_rows)
-            # Sample 200 rows deterministically with seed=42 from the held-out test split
-            indices = np.random.RandomState(42).choice(total_test_rows, size=sample_count, replace=False)
-            indices.sort()
-            sample_df = df_test.iloc[indices]
-            X_sample = self._scaler.transform(sample_df[FEATURE_COLUMNS])
-            n_samples = len(X_sample)
-            vals = self._explainer.shap_values(X_sample)
-            mean_abs = np.mean(np.abs(vals), axis=0)
-        except Exception:
-            mean_abs = np.array(self._model.feature_importances_)
-            n_samples = 1
-            total_test_rows = total_test_rows or 1
+        if not fixture_path.exists():
+            items = [
+                {"feature": fname, "mean_abs_shap_kw": 0.0, "importance_pct": round(100.0 / len(self._feature_names), 1), "rank": i + 1}
+                for i, fname in enumerate(self._feature_names)
+            ]
+            self._global_shap_cache = {
+                "total_features": len(items),
+                "sample_size": 0,
+                "n_samples": 0,
+                "split_name": "test",
+                "total_test_rows": total_test_rows,
+                "feature_importances": items,
+            }
+            return self._global_shap_cache
 
+        df_fixture = pd.read_csv(fixture_path)
+        if "timestamp" in df_fixture.columns:
+            df_fixture["timestamp"] = pd.to_datetime(df_fixture["timestamp"])
+        feats_df = assemble_features_df(
+            df_fixture,
+            is_batch=True,
+            how_table=self._how_table,
+            feature_names=self._feature_names,
+        )
+        n_sample = min(200, len(feats_df))
+        sample_df = feats_df.iloc[:n_sample]
+
+        shap_vals = self._explainer.shap_values(sample_df)
+        mean_abs = np.mean(np.abs(shap_vals), axis=0)
         total = float(np.sum(mean_abs)) if float(np.sum(mean_abs)) > 0 else 1.0
+
         items = []
         for i, fname in enumerate(self._feature_names):
             val = float(mean_abs[i])
@@ -283,9 +463,9 @@ class MLEngine:
 
         result = {
             "total_features": len(items),
-            "sample_size": n_samples,
-            "n_samples": n_samples,
-            "split_name": split_name,
+            "sample_size": n_sample,
+            "n_samples": n_sample,
+            "split_name": "test",
             "total_test_rows": total_test_rows,
             "feature_importances": items,
         }
