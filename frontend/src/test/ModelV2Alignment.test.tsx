@@ -305,6 +305,16 @@ describe('Model v2 Alignment Tests', () => {
       // Empirical interval legend is rendered with bounds
       expect(screen.getByText(/Empirical 80% interval \(110\.0 – 150\.0 kW\)/)).toBeInTheDocument();
     });
+
+    it('renders title as "Load Timeline (2h history + 2h forecast)"', () => {
+      vi.spyOn(DataContextModule, 'useData').mockReturnValue({
+        settings: { notifications_enabled: false },
+      } as any);
+
+      render(<ForecastTimeline {...defaultProps} isSimulated={false} />);
+      expect(screen.getByRole('heading', { level: 3, name: 'Load Timeline (2h history + 2h forecast)' })).toBeInTheDocument();
+      expect(screen.getByText(/Load Timeline \(2h history \+ 2h forecast\)\. Predicted load:/)).toBeInTheDocument();
+    });
   });
 
   describe('Control Center Scenario Timeline Builder (Phase E.2e)', () => {
