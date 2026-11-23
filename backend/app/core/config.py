@@ -102,6 +102,9 @@ SEVERE_TARIFF_MULTIPLIER: float = 1.80
 # ── Throttling Rules ──
 THROTTLE_PER_STALL_CAP_KW: float = 60.0  # per-stall cap when throttling
 
+# ── Station & Timezone Defaults ──
+DEFAULT_STATION_TIMEZONE: str = os.getenv("DEFAULT_STATION_TIMEZONE", "Asia/Kolkata")
+
 # ── Weather ──
 CITY_NAME: str = "Mumbai"
 CITY_LAT: float = 19.0760

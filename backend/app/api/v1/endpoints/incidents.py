@@ -55,6 +55,8 @@ async def get_incident_history(
                 throttled_bays_count=inc.throttled_bays_count,
                 shed_bays_count=inc.shed_bays_count,
                 operator_username=inc.operator_username,
+                station_id=inc.station_id,
+                source=inc.source,
             )
             for inc in records
         ],

@@ -14,6 +14,7 @@ export interface PredictResponse {
   inference_latency_ms: number;
   lower_bound_kw?: number;
   upper_bound_kw?: number;
+  station_local_time?: string;
 }
 
 export interface Attribution {
@@ -38,6 +39,9 @@ export interface GlobalFeatureImportanceItem {
 export interface GlobalExplainResponse {
   total_features: number;
   sample_size: number;
+  n_samples?: number;
+  split_name?: string;
+  total_test_rows?: number;
   feature_importances: GlobalFeatureImportanceItem[];
 }
 
@@ -51,6 +55,8 @@ export interface IncidentItem {
   throttled_bays_count: number;
   shed_bays_count: number;
   operator_username?: string | null;
+  station_id?: number;
+  source?: string;
 }
 
 export interface IncidentHistoryResponse {
@@ -85,6 +91,22 @@ export interface ModelMetrics {
   rmse_kw: number;
   surge_recall_pct: number;
   latency_ms: number;
+  rule_a_recall_pct?: number;
+  early_warning_recall_pct?: number;
+  rule_a_precision_pct?: number;
+  latency_model_only_ms?: number;
+  latency_end_to_end_ms?: number;
+  n_test_samples?: number;
+}
+
+export interface PredictRequest {
+  timestamp?: string;
+  ambient_temp_c: number;
+  traffic_inflow_index: number;
+  active_plugs: number;
+  grid_frequency_hz: number;
+  load_lags_kw: number[] | [number, number, number, number];
+  prev_active_plugs?: number;
 }
 
 export interface MetricsResponse {
@@ -114,6 +136,38 @@ export interface BatchPredictResponse {
   download_url: string;
 }
 
+export interface TariffCurvePoint {
+  utilization_pct: number;
+  surge_status: 'NORMAL' | 'WARNING' | 'CRITICAL';
+  base_multiplier: number;
+  two_wheeler: number;
+  standard_4w: number;
+  fast_charging: number;
+}
+
+export interface TariffCurveBand {
+  name: string;
+  surge_status: 'NORMAL' | 'WARNING' | 'CRITICAL';
+  min_pct: number;
+  max_pct: number;
+  base_multiplier: number;
+  multipliers: Record<string, number>;
+}
+
+export interface TariffCategoryInfo {
+  key: string;
+  label: string;
+  category_multiplier: number;
+  avg_power_kw: number;
+}
+
+export interface TariffCurveResponse {
+  bands: TariffCurveBand[];
+  points: TariffCurvePoint[];
+  categories: Record<string, TariffCategoryInfo>;
+}
+
+
 export const FEATURE_READABLE_NAMES: Record<string, string> = {
   ambient_temp_c: 'Ambient Temperature',
   traffic_inflow_index: 'Traffic Inflow Index',
@@ -130,6 +184,8 @@ export const FEATURE_READABLE_NAMES: Record<string, string> = {
   hour_cos: 'Hour Cycle (cos)',
   day_sin: 'Day Cycle (sin)',
   day_cos: 'Day Cycle (cos)',
+  load_anomaly: 'Load vs Normal (hour-of-week)',
+  lag_trend: 'Load Trend (60m to 15m)',
 };
 
 export function getFeatureReadableName(feature: string): string {

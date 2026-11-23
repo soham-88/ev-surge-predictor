@@ -1,4 +1,4 @@
-import type { PredictResponse, ExplainResponse, GlobalExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse, IncidentHistoryResponse } from '../types/telemetry';
+import type { PredictRequest, PredictResponse, ExplainResponse, GlobalExplainResponse, SimulateResponse, MetricsResponse, BatchPredictResponse, IncidentHistoryResponse, TariffCurveResponse } from '../types/telemetry';
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const API_BASE_URL = RAW_API_URL.endsWith('/api/v1')
@@ -74,14 +74,7 @@ export const api = {
     }
   },
 
-  async predict(customPayload?: Partial<{
-    timestamp: string;
-    ambient_temp_c: number;
-    traffic_inflow_index: number;
-    active_plugs: number;
-    grid_frequency_hz: number;
-    load_lags_kw: number[] | [number, number, number, number];
-  }>): Promise<PredictResponse> {
+  async predict(customPayload?: Partial<PredictRequest>): Promise<PredictResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
     const startTime = performance.now();
@@ -136,14 +129,7 @@ export const api = {
     return lastKnownWeatherTemp;
   },
 
-  async explain(customPayload?: Partial<{
-    timestamp: string;
-    ambient_temp_c: number;
-    traffic_inflow_index: number;
-    active_plugs: number;
-    grid_frequency_hz: number;
-    load_lags_kw: number[];
-  }>): Promise<ExplainResponse> {
+  async explain(customPayload?: Partial<PredictRequest>): Promise<ExplainResponse> {
     const defaultPayload = {
       timestamp: new Date().toISOString(),
       ambient_temp_c: 36.5,
@@ -228,6 +214,12 @@ export const api = {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  },
+
+  async getTariffCurve(): Promise<TariffCurveResponse> {
+    const response = await fetchWithAuth(`${API_BASE_URL}/tariff/curve`);
+    if (!response.ok) throw new Error('Failed to fetch tariff curve');
+    return await response.json();
   }
 };
 

@@ -13,6 +13,8 @@ def test_health(client: TestClient):
     data = resp.json()
     assert data["status"] == "ok"
     assert data["service"] == "ev-surge-predictor"
+    assert data["database"] == "ok"
+    assert data["migration_revision"] == "0002_stations_and_roles"
 
 
 def test_login_success(client: TestClient):

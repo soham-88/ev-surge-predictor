@@ -1,0 +1,20 @@
+{
+  "model": "xgb_v2",
+  "nominal_coverage": 0.8,
+  "calibration_split": "VAL (val_purged.parquet)",
+  "q10_kw": -20.452,
+  "q90_kw": 19.604,
+  "mean_interval_width_kw": 40.056,
+  "test_coverage_overall": 0.7972,
+  "test_coverage_per_day_type": {
+    "normal": 0.8032,
+    "event": 0.7668,
+    "low": 0.7654
+  },
+  "test_coverage_surge_ge_200kw": 0.7456,
+  "n_val": 9420,
+  "n_test": 9480,
+  "n_test_surges": 739,
+  "coverage_gate_passed": true,
+  "calibrated_at": "2026-11-17T19:19:15.092797+00:00"
+}

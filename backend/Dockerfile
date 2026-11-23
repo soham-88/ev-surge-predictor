@@ -18,6 +18,8 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
 COPY app/ app/
 COPY pipeline/ pipeline/
 COPY saved_models/ saved_models/
+COPY alembic.ini .
+COPY migrations/ migrations/
 RUN mkdir -p /app/data
 
 # Expose FastAPI port

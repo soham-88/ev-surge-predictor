@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 SURGE_TELEMETRY = {
-    "timestamp": "2026-10-28T14:00:00Z",
+    "timestamp": "2026-10-28T12:00:00Z",
     "ambient_temp_c": 42.0,
     "traffic_inflow_index": 95,
     "active_plugs": 8,
@@ -42,6 +42,8 @@ def test_incidents_logged_on_surge_prediction(
     assert latest["surge_status"] in ("WARNING", "CRITICAL")
     assert latest["predicted_load_kw"] > 0
     assert latest["tariff_multiplier"] >= 1.0
+    assert latest["station_id"] is not None
+    assert latest["source"] == "LIVE"
 
 
 def test_viewer_cannot_delete_incidents(

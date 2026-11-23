@@ -10,6 +10,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 
 from app.core.config import TRANSFORMER_CAPACITY_KW
+from app.core.timezone import to_station_local
 from app.models.ml_engine import engine
 from app.models.optimizer import compute_mitigations
 from app.schemas.telemetry import (
@@ -40,6 +41,7 @@ def _log_incident_if_needed(
     try:
         from app.core.database import SessionLocal
         from app.models.incident import Incident
+        from app.models.station import Station
 
         db = SessionLocal()
         try:
@@ -50,7 +52,10 @@ def _log_incident_if_needed(
                 .first()
             )
             if not recent:
+                default_station = db.query(Station).filter(Station.code == "MUM-01").first()
+                station_id = default_station.id if default_station else 1
                 incident = Incident(
+                    station_id=station_id,
                     surge_status=surge_status,
                     predicted_load_kw=round(predicted_load_kw, 1),
                     capacity_utilization_pct=round(capacity_utilization_pct, 1),
@@ -58,27 +63,29 @@ def _log_incident_if_needed(
                     throttled_bays_count=throttled_count,
                     shed_bays_count=shed_count,
                     operator_username=operator_username,
+                    source="LIVE",
                 )
                 db.add(incident)
                 db.commit()
         finally:
             db.close()
     except Exception as e:
-        logger.warning(f"Failed to record incident to SQLite: {e}")
+        logger.warning(f"Failed to record incident: {e}")
 
 
 @router.post("/predict", response_model=PredictResponse)
 async def predict_surge(req: PredictRequest, current_user: User = Depends(get_current_user)) -> PredictResponse:
     """Run XGBoost inference and return load forecast + mitigation policy."""
 
-    hour = req.timestamp.hour + req.timestamp.minute / 60.0
-    day_of_week = req.timestamp.weekday()
+    local_ts = to_station_local(req.timestamp)
+    hour = local_ts.hour + local_ts.minute / 60.0
+    day_of_week = local_ts.weekday()
 
     # Use the client-provided ambient temperature directly to guarantee consistency
     # with the TreeSHAP /explain endpoint and historical evaluations.
     ambient_temp = req.ambient_temp_c
 
-    predicted_load_kw, latency_ms, scaled_features = engine.predict(
+    predicted_load_kw, latency_ms, raw_features = engine.predict(
         ambient_temp_c=ambient_temp,
         traffic_inflow_index=req.traffic_inflow_index,
         active_plugs=req.active_plugs,
@@ -86,6 +93,8 @@ async def predict_surge(req: PredictRequest, current_user: User = Depends(get_cu
         load_lags_kw=req.load_lags_kw,
         hour=hour,
         day_of_week=day_of_week,
+        timestamp=local_ts,
+        prev_active_plugs=req.prev_active_plugs,
     )
 
     mitigations = compute_mitigations(predicted_load_kw, req.active_plugs)
@@ -115,4 +124,5 @@ async def predict_surge(req: PredictRequest, current_user: User = Depends(get_cu
         inference_latency_ms=round(latency_ms, 1),
         lower_bound_kw=lower_bound_kw,
         upper_bound_kw=upper_bound_kw,
+        station_local_time=local_ts.isoformat(),
     )
