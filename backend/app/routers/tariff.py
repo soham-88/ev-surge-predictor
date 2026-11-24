@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/tariff", tags=["tariff"])
 
 
 class VehicleAdjustedTariffRequest(BaseModel):
-    base_surge_multiplier: float = Field(..., description="Base surge multiplier")
+    base_surge_multiplier: float = Field(..., ge=0.5, le=5.0, description="Base surge multiplier (allowed: 0.5x to 5.0x)")
     vehicle_type: Optional[str] = Field(default="standard_4w", description="Vehicle category: two_wheeler, standard_4w, or fast_charging")
 
 

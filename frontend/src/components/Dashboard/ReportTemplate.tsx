@@ -86,16 +86,10 @@ export const ReportTemplate = React.forwardRef<HTMLDivElement>((_, ref) => {
   // Comparison sentence computation matching Vehicle Tariff Lab
   const fcData = tariffs.fast_charging;
   const stdData = tariffs.standard_4w;
-  let comparisonSentence = '';
-  if (fcData && stdData && stdData.final_tariff_multiplier > 0) {
-    const fcMultiplier = fcData.final_tariff_multiplier;
-    const stdMultiplier = stdData.final_tariff_multiplier;
-    const diffPct = ((fcMultiplier - stdMultiplier) / stdMultiplier) * 100;
-    comparisonSentence = `Fast-Charging EVs pay ${fcMultiplier.toFixed(2)}x base rate — ${diffPct.toFixed(1)}% more than Standard 4W EVs, due to higher instantaneous load contribution.`;
-  } else {
-    const fcMult = (baseSurgeMultiplier * 1.35).toFixed(2);
-    comparisonSentence = `Fast-Charging EVs pay ${fcMult}x base rate — 35.0% more than Standard 4W EVs, due to higher instantaneous load contribution.`;
-  }
+  const comparisonSentence =
+    fcData && stdData && stdData.final_tariff_multiplier > 0
+      ? `Fast-Charging EVs pay ${fcData.final_tariff_multiplier.toFixed(2)}x base rate — ${(((fcData.final_tariff_multiplier - stdData.final_tariff_multiplier) / stdData.final_tariff_multiplier) * 100).toFixed(1)}% more than Standard 4W EVs, due to higher instantaneous load contribution.`
+      : `Fast-Charging EVs pay ${(baseSurgeMultiplier * 1.35).toFixed(2)}x base rate — 35.0% more than Standard 4W EVs, due to higher instantaneous load contribution.`;
 
   // 1. Bay Status Matrix section inserted immediately after Mitigation Actions and before Recent Surge Events
   const bayStatusMatrixSection = (

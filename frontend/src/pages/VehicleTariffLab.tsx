@@ -375,7 +375,7 @@ export function VehicleTariffLab() {
   const fcData = tariffs.fast_charging;
   const stdData = tariffs.standard_4w;
 
-  let comparisonContent: ReactNode = null;
+  let comparisonContent: ReactNode;
   if (fcData && stdData && stdData.final_tariff_multiplier > 0) {
     const fcMultiplier = fcData.final_tariff_multiplier;
     const stdMultiplier = stdData.final_tariff_multiplier;

@@ -20,7 +20,7 @@ export function LoginPage() {
         localStorage.setItem('token', data.access_token);
         const role = data.role === 'operator' ? 'Operator' : 'Viewer';
         login(data.username, role);
-      } catch (err: any) {
+      } catch {
         setError('Invalid username or password');
       } finally {
         setIsSubmitting(false);

@@ -5,6 +5,7 @@ Station-local timezone resolution and conversion utilities.
 from __future__ import annotations
 
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
 import pandas as pd
@@ -12,6 +13,7 @@ import pandas as pd
 from app.core.config import DEFAULT_STATION_TIMEZONE
 
 
+@lru_cache(maxsize=32)
 def get_station_timezone(station_code: str = "MUM-01") -> str:
     """Read the station timezone from the stations table, falling back to config setting."""
     try:

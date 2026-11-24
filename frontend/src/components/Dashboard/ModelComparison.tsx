@@ -19,7 +19,7 @@ interface Props {
   attributions?: Attribution[];
 }
 
-export function ModelComparison({ attributions: _attributions }: Props) {
+export function ModelComparison(_props: Props) {
   const { metricsData: metrics } = useData();
   const [isChartExpanded, setIsChartExpanded] = useState(false);
   const [globalSummarySentence, setGlobalSummarySentence] = useState<string>('');
@@ -82,21 +82,15 @@ export function ModelComparison({ attributions: _attributions }: Props) {
     const benchmarkCritRecall = benchmark.rule_a_recall_pct ?? benchmark.surge_recall_pct;
     const recallDiff = Math.abs(deployedCritRecall - benchmarkCritRecall);
 
-    let accuracyStatement = '';
-    if (maeDiff <= 1.0) {
-      accuracyStatement = `MAE is comparable between both models (difference of ${maeDiff.toFixed(2)} kW)`;
-    } else {
-      const lowerMaeModel = deployed.mae_kw < benchmark.mae_kw ? deployedName : benchmarkName;
-      accuracyStatement = `${lowerMaeModel} achieves lower MAE by ${maeDiff.toFixed(2)} kW`;
-    }
+    const accuracyStatement =
+      maeDiff <= 1.0
+        ? `MAE is comparable between both models (difference of ${maeDiff.toFixed(2)} kW)`
+        : `${deployed.mae_kw < benchmark.mae_kw ? deployedName : benchmarkName} achieves lower MAE by ${maeDiff.toFixed(2)} kW`;
 
-    let recallStatement = '';
-    if (recallDiff < 0.1) {
-      recallStatement = 'equal critical surge recall';
-    } else {
-      const higherRecallModel = deployedCritRecall > benchmarkCritRecall ? deployedName : benchmarkName;
-      recallStatement = `${higherRecallModel} achieves higher critical surge recall by ${recallDiff.toFixed(1)} percentage points (pp)`;
-    }
+    const recallStatement =
+      recallDiff < 0.1
+        ? 'equal critical surge recall'
+        : `${deployedCritRecall > benchmarkCritRecall ? deployedName : benchmarkName} achieves higher critical surge recall by ${recallDiff.toFixed(1)} percentage points (pp)`;
 
     return `${accuracyStatement}, while ${recallStatement}. XGBoost provides exact TreeSHAP attributions; LSTM serves as an offline benchmark.`;
   }, [metrics]);

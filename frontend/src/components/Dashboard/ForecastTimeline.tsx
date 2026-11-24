@@ -62,6 +62,7 @@ export function ForecastTimeline({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { settings } = useData();
+  const nowMs = useRef(Date.now()).current;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -663,7 +664,7 @@ export function ForecastTimeline({
         ) : (
           <div className={`grid ${isReport ? 'grid-cols-2 gap-3 max-h-none' : 'grid-cols-1 gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar'}`}>
             {recentEvents.slice(0, 5).map((event, idx) => {
-              const minDiff = Math.floor((Date.now() - new Date(event.timestamp).getTime()) / 60000);
+              const minDiff = Math.floor((nowMs - new Date(event.timestamp).getTime()) / 60000);
               const relTime = minDiff === 0 ? 'Just now' : minDiff < 60 ? `${minDiff}m ago` : `${Math.floor(minDiff / 60)}h ${minDiff % 60}m ago`;
               return (
                 <div key={idx} className="flex justify-between items-center p-3 rounded-lg bg-surface-variant/30 border border-border-subtle/50">
@@ -716,7 +717,7 @@ export function ForecastTimeline({
                 </div>
               ) : (
                 recentEvents.map((event, idx) => {
-                  const minDiff = Math.floor((Date.now() - new Date(event.timestamp).getTime()) / 60000);
+                  const minDiff = Math.floor((nowMs - new Date(event.timestamp).getTime()) / 60000);
                   const relTime = minDiff === 0 ? 'Just now' : minDiff < 60 ? `${minDiff}m ago` : `${Math.floor(minDiff / 60)}h ${minDiff % 60}m ago`;
                   return (
                     <div key={idx} className="flex justify-between items-center p-3 rounded-lg bg-surface-variant/30 border border-border-subtle/50">

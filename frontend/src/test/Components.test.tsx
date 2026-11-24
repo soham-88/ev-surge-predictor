@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { StallGrid } from '../components/Dashboard/StallGrid';
 import { ShapWaterfall, computeWaterfallDomain } from '../components/Dashboard/ShapWaterfall';
-import { GlobalShapImportance, summarizeGlobalImportance } from '../components/Dashboard/GlobalShapImportance';
+import { GlobalShapImportance } from '../components/Dashboard/GlobalShapImportance';
+import { summarizeGlobalImportance } from '../utils/shapSummary';
 import { api } from '../services/api';
 import { getFeatureReadableName } from '../types/telemetry';
 

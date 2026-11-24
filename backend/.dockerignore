@@ -16,3 +16,5 @@ data/
 *.env
 .git/
 .agents/
+pipeline/candidate_v2/
+

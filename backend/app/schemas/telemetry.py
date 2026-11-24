@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -96,11 +96,19 @@ class GlobalExplainResponse(BaseModel):
 
 class SimulateRequest(BaseModel):
     """What-if stress test perturbation parameters."""
-    temp_delta_c: float = Field(0.0, description="Temperature perturbation in Celsius")
-    traffic_surge_pct: float = Field(0.0, ge=0, le=100, description="Traffic surge percentage")
+    temp_delta_c: float = Field(0.0, ge=-25.0, le=25.0, description="Temperature perturbation in Celsius (-25 to +25 C)")
+    traffic_surge_pct: float = Field(0.0, ge=0, le=100, description="Traffic surge percentage (0 to 100%)")
     forced_outage_stalls: List[int] = Field(
-        default_factory=list, description="Bay indices forced offline"
+        default_factory=list, description="Bay indices forced offline (valid bays: 1 to 8)"
     )
+
+    @field_validator("forced_outage_stalls")
+    @classmethod
+    def validate_stalls(cls, v: List[int]) -> List[int]:
+        for stall in v:
+            if not (1 <= stall <= 8):
+                raise ValueError(f"Invalid stall index {stall}. Must be between 1 and 8.")
+        return sorted(list(set(v)))
 
 
 class TimelinePoint(BaseModel):

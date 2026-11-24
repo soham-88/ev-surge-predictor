@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from app.core.security import get_current_user
 from app.models.user import User
@@ -9,7 +10,8 @@ router = APIRouter()
 @router.get("/weather/current")
 async def get_current_weather(current_user: User = Depends(get_current_user)):
     try:
-        temp = get_current_temperature()
+        # Offload synchronous network I/O to thread pool to prevent event loop blocking
+        temp = await asyncio.to_thread(get_current_temperature)
         return {
             "temperature_c": temp,
             "city": CITY_NAME,

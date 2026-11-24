@@ -219,10 +219,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     loadBaseData();
   }, []);
 
-  // Periodic weather poll (every 60s when connected)
+  // Periodic weather poll (every 60s when connected and document is visible)
   useEffect(() => {
     if (isOffline) return;
-    const interval = setInterval(fetchWeather, 60000);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      fetchWeather();
+    }, 60000);
     return () => clearInterval(interval);
   }, [isOffline, fetchWeather]);
 
@@ -231,6 +236,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (isPaused || isSimulationMode) return;
 
     const interval = setInterval(async () => {
+      // Optimization: pause polling when browser tab is hidden to save battery & network bandwidth
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
       try {
         const currentPayload = buildScenarioPayload(activeScenarioRef.current);
         const pRes = await api.predict(currentPayload);

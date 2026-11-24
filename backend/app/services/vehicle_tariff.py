@@ -35,6 +35,8 @@ def calculate_vehicle_adjusted_tariff(base_multiplier: float, vehicle_type: str)
     try:
         try:
             base_mult = float(base_multiplier)
+            # Security & logic guard: clamp multiplier to valid operating range [0.5, 5.0]
+            base_mult = max(0.5, min(5.0, base_mult))
         except (TypeError, ValueError):
             base_mult = 1.0
 
@@ -71,11 +73,19 @@ def calculate_vehicle_adjusted_tariff(base_multiplier: float, vehicle_type: str)
         }
 
 
+_CACHED_TARIFF_CURVE: Dict[str, Any] | None = None
+
+
 def get_tariff_curve_data() -> dict:
     """
     Computes tariff multipliers across 0-100% capacity utilization directly from
     the optimizer surge and tariff policies, combined with vehicle category factors.
+    Precomputed and cached for high performance.
     """
+    global _CACHED_TARIFF_CURVE
+    if _CACHED_TARIFF_CURVE is not None:
+        return _CACHED_TARIFF_CURVE
+
     from app.models.optimizer import classify_surge, compute_tariff
 
     bands = [
@@ -149,9 +159,10 @@ def get_tariff_curve_data() -> dict:
         for key, info in VEHICLE_TARIFF_TABLE.items()
     }
 
-    return {
+    _CACHED_TARIFF_CURVE = {
         "bands": bands,
         "points": points,
         "categories": categories,
     }
+    return _CACHED_TARIFF_CURVE
 

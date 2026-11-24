@@ -20,7 +20,10 @@ COPY pipeline/ pipeline/
 COPY saved_models/ saved_models/
 COPY alembic.ini .
 COPY migrations/ migrations/
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose FastAPI port
 EXPOSE 8000

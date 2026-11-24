@@ -47,6 +47,10 @@ scratch/
 # Files > 5 MB: shap_explainer.joblib is ~6.1 MB (rebuilt via python pipeline/train.py)
 # Models under 5 MB (xgboost_model, scaler, feature_names, metrics) remain tracked
 backend/saved_models/shap_explainer.joblib
+*.parquet
+backend/pipeline/candidate_v2/*.parquet
+backend/pipeline/candidate_v2/*.joblib
+backend/pipeline/candidate_v2/*.pt
 # OS & Editor Junk
 .DS_Store
 .AppleDouble

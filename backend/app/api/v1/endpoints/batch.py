@@ -27,7 +27,9 @@ router = APIRouter()
 
 # In-memory cache for CSV downloads with maximum capacity cap (FIFO eviction).
 MAX_BATCH_CACHE_SIZE = 50
-_batch_results_cache: Dict[str, pd.DataFrame] = {}
+MAX_BATCH_FILE_SIZE_BYTES = 15 * 1024 * 1024  # 15 MB
+MAX_BATCH_ROWS = 50_000
+_batch_results_cache: Dict[str, Dict[str, Any]] = {}
 
 
 @router.post("/predict/batch", response_model=BatchPredictResponse)
@@ -37,10 +39,22 @@ async def predict_batch(file: UploadFile = File(...), current_user: User = Depen
         raise HTTPException(status_code=400, detail="Only .csv files are supported.")
 
     contents = await file.read()
+    if len(contents) > MAX_BATCH_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uploaded file exceeds maximum limit of {MAX_BATCH_FILE_SIZE_BYTES // (1024 * 1024)} MB."
+        )
+
     try:
         df = pd.read_csv(io.BytesIO(contents))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse CSV: {e}")
+
+    if len(df) > MAX_BATCH_ROWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Uploaded CSV exceeds maximum row limit of {MAX_BATCH_ROWS:,} rows."
+        )
 
     expected_columns = [
         "timestamp",
@@ -111,20 +125,20 @@ async def predict_batch(file: UploadFile = File(...), current_user: User = Depen
         mae = (df['actual_kw'] - df['predicted_kw']).abs().mean()
         avg_mae = round(float(mae), 2)
 
-    # Prepare predictions list
+    # Prepare predictions list (vectorized dictionary conversion for performance)
     predictions = []
-    for _, row in df.iterrows():
-        # Handle nan in actual_kw if it's there
+    has_actual = 'actual_kw' in df.columns
+    for record in df.to_dict(orient="records"):
         actual = None
-        if 'actual_kw' in row and pd.notna(row['actual_kw']):
-            actual = float(row['actual_kw'])
-            
+        if has_actual and pd.notna(record.get('actual_kw')):
+            actual = float(record['actual_kw'])
+
         predictions.append(
             BatchPrediction(
-                timestamp=str(row['timestamp']),
+                timestamp=str(record['timestamp']),
                 actual_kw=actual,
-                predicted_kw=float(row['predicted_kw']),
-                surge_status=str(row['surge_status'])
+                predicted_kw=float(record['predicted_kw']),
+                surge_status=str(record['surge_status'])
             )
         )
 
@@ -132,7 +146,10 @@ async def predict_batch(file: UploadFile = File(...), current_user: User = Depen
     if len(_batch_results_cache) >= MAX_BATCH_CACHE_SIZE:
         oldest_key = next(iter(_batch_results_cache))
         _batch_results_cache.pop(oldest_key, None)
-    _batch_results_cache[batch_id] = df
+    _batch_results_cache[batch_id] = {
+        "df": df,
+        "owner": current_user.username if current_user else None,
+    }
 
     return BatchPredictResponse(
         batch_id=batch_id,
@@ -155,8 +172,12 @@ async def download_batch_csv(batch_id: str, current_user: User = Depends(get_cur
     if batch_id not in _batch_results_cache:
         raise HTTPException(status_code=404, detail="Batch ID not found or expired.")
 
-    df = _batch_results_cache[batch_id]
-    
+    cached = _batch_results_cache[batch_id]
+    if cached.get("owner") and cached["owner"] != current_user.username and current_user.role not in ("operator", "admin"):
+        raise HTTPException(status_code=403, detail="Not authorized to download this batch.")
+
+    df = cached["df"]
+
     stream = io.StringIO()
     df.to_csv(stream, index=False)
     response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")

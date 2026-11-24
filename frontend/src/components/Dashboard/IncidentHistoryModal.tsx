@@ -46,7 +46,8 @@ export function IncidentHistoryModal({ isOpen, onClose, triggerRef }: Props) {
   // Focus management & Escape key handling
   useEffect(() => {
     if (isOpen) {
-      previouslyFocusedRef.current = (document.activeElement as HTMLElement) || triggerRef?.current || null;
+      const currentTrigger = triggerRef?.current;
+      previouslyFocusedRef.current = (document.activeElement as HTMLElement) || currentTrigger || null;
 
       // Focus first interactive element in modal
       const timer = setTimeout(() => {
@@ -89,7 +90,7 @@ export function IncidentHistoryModal({ isOpen, onClose, triggerRef }: Props) {
         clearTimeout(timer);
         window.removeEventListener('keydown', handleKeyDown);
         // Restore focus on close
-        const returnTarget = triggerRef?.current || previouslyFocusedRef.current;
+        const returnTarget = currentTrigger || previouslyFocusedRef.current;
         if (returnTarget && typeof returnTarget.focus === 'function') {
           returnTarget.focus();
         }

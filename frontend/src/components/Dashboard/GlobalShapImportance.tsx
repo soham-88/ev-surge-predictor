@@ -24,8 +24,6 @@ import {
   summarizeGlobalImportance,
 } from '../../utils/shapSummary';
 
-export { summarizeGlobalImportance };
-
 export function GlobalShapImportance() {
   const [data, setData] = useState<GlobalExplainResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);

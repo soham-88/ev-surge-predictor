@@ -103,7 +103,7 @@ export function SandboxPage() {
         outageStalls: params.forced_outage_stalls.length,
       });
       toast.success('Simulation applied successfully! Dynamic mitigation dispatched.');
-    } catch (err) {
+    } catch {
       toast.error('Simulation failed. Could not compute stressed scenario.');
     } finally {
       setIsApplying(false);
