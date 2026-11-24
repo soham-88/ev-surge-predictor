@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ShapWaterfall } from '../components/Dashboard/ShapWaterfall';
 import { GlobalShapImportance } from '../components/Dashboard/GlobalShapImportance';
 import { ModelComparison } from '../components/Dashboard/ModelComparison';
@@ -63,6 +63,29 @@ export function ShapPage() {
   const { isSimulationActive, simulationParams } = useTariff();
 
   const [activeTab, setActiveTab] = useState<'local' | 'global'>('local');
+  const localTabRef = useRef<HTMLButtonElement>(null);
+  const globalTabRef = useRef<HTMLButtonElement>(null);
+
+  const handleTabKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (activeTab === 'local') {
+        setActiveTab('global');
+        globalTabRef.current?.focus();
+      } else {
+        setActiveTab('local');
+        localTabRef.current?.focus();
+      }
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setActiveTab('local');
+      localTabRef.current?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setActiveTab('global');
+      globalTabRef.current?.focus();
+    }
+  };
   const [explainData, setExplainData] = useState<ExplainResponse | null>(contextExplainData);
   const [isLoading, setIsLoading] = useState<boolean>(!contextExplainData);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
@@ -168,32 +191,45 @@ export function ShapPage() {
           <p className="font-body-sm text-text-secondary mt-1">TreeSHAP Feature Attributions &amp; Global Physics</p>
         </div>
 
-        <div className="flex items-center gap-1.5 p-1 bg-surface-container-low border border-border-subtle rounded-xl self-start sm:self-auto" role="tablist" aria-label="Explainability View">
+        <div
+          role="tablist"
+          aria-label="Model Explainability View"
+          onKeyDown={handleTabKeyDown}
+          className="flex items-center gap-1.5 p-1 bg-surface-container-low border border-border-subtle rounded-xl self-start sm:self-auto w-full sm:w-auto"
+        >
           <button
+            ref={localTabRef}
+            id="tab-local"
             role="tab"
             aria-selected={activeTab === 'local'}
+            aria-controls="panel-local"
+            tabIndex={activeTab === 'local' ? 0 : -1}
             onClick={() => setActiveTab('local')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-xs sm:text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
               activeTab === 'local'
                 ? 'bg-primary text-surface-container-lowest font-bold shadow'
                 : 'text-text-secondary hover:text-text-primary'
             }`}
           >
-            <span className="material-symbols-outlined text-[18px]">waterfall_chart</span>
-            Local Attribution (Waterfall)
+            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">waterfall_chart</span>
+            <span>Local Attribution (Waterfall)</span>
           </button>
           <button
+            ref={globalTabRef}
+            id="tab-global"
             role="tab"
             aria-selected={activeTab === 'global'}
+            aria-controls="panel-global"
+            tabIndex={activeTab === 'global' ? 0 : -1}
             onClick={() => setActiveTab('global')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 min-h-[44px] rounded-lg text-xs sm:text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-primary ${
               activeTab === 'global'
                 ? 'bg-primary text-surface-container-lowest font-bold shadow'
                 : 'text-text-secondary hover:text-text-primary'
             }`}
           >
-            <span className="material-symbols-outlined text-[18px]">bar_chart</span>
-            Global Feature Importance
+            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">bar_chart</span>
+            <span>Global Feature Importance</span>
           </button>
         </div>
       </div>
@@ -206,7 +242,7 @@ export function ShapPage() {
           className="mb-6 p-3 rounded-lg bg-status-warning/10 border border-status-warning/30 flex items-center justify-between shadow-[0_0_15px_rgba(245,158,11,0.15)]"
         >
           <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-status-warning">science</span>
+            <span className="material-symbols-outlined text-status-warning" aria-hidden="true">science</span>
             <span className="font-body-md text-text-primary font-bold tracking-wide">
               SIMULATION ACTIVE — viewing TreeSHAP attributions for simulated stress parameters
             </span>
@@ -214,7 +250,7 @@ export function ShapPage() {
           {user?.role === 'Operator' && (
             <Link 
               to="/sandbox" 
-              className="font-label-mono text-sm text-status-warning hover:text-status-warning/80 underline transition-colors font-bold"
+              className="font-label-mono text-sm text-status-warning hover:text-status-warning/80 underline transition-colors font-bold min-h-[44px] inline-flex items-center"
             >
               Back to Sandbox
             </Link>
@@ -224,7 +260,13 @@ export function ShapPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-gap-grid auto-rows-min">
         {activeTab === 'local' ? (
-          <>
+          <div
+            id="panel-local"
+            role="tabpanel"
+            aria-labelledby="tab-local"
+            tabIndex={0}
+            className="col-span-12 flex flex-col gap-gap-grid focus:outline-none"
+          >
             {/* Full-width SHAP Waterfall */}
             <ShapWaterfall
               baseValue={activeExplainData.base_value_kw}
@@ -235,9 +277,17 @@ export function ShapPage() {
             
             {/* Model Comparison */}
             <ModelComparison attributions={activeExplainData.attributions} />
-          </>
+          </div>
         ) : (
-          <GlobalShapImportance />
+          <div
+            id="panel-global"
+            role="tabpanel"
+            aria-labelledby="tab-global"
+            tabIndex={0}
+            className="col-span-12 focus:outline-none"
+          >
+            <GlobalShapImportance />
+          </div>
         )}
       </div>
     </>

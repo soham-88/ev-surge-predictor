@@ -1,0 +1,19 @@
+[
+  "ambient_temp_c",
+  "traffic_inflow_index",
+  "active_plugs",
+  "grid_frequency_hz",
+  "load_lag_15m",
+  "load_lag_30m",
+  "load_lag_45m",
+  "load_lag_60m",
+  "rolling_mean_60m",
+  "rolling_std_60m",
+  "plug_delta_15m",
+  "hour_sin",
+  "hour_cos",
+  "day_sin",
+  "day_cos",
+  "load_anomaly",
+  "lag_trend"
+]

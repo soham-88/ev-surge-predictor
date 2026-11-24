@@ -17,6 +17,30 @@ import { useToast } from '../context/ToastContext';
 import { api } from '../services/api';
 import type { BatchPredictResponse } from '../types/telemetry';
 
+export function formatBatchTimestampIST(timestampStr: string, spansMultipleDays: boolean = false): string {
+  const d = new Date(timestampStr);
+  if (isNaN(d.getTime())) return timestampStr;
+
+  const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const timeStr = timeFormatter.format(d);
+
+  if (spansMultipleDays) {
+    const dateFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      month: 'short',
+      day: 'numeric',
+    });
+    const dateStr = dateFormatter.format(d);
+    return `${dateStr}, ${timeStr}`;
+  }
+  return timeStr;
+}
+
 export function BatchAnalysis() {
   const toast = useToast();
   const [dragActive, setDragActive] = useState(false);
@@ -113,39 +137,26 @@ export function BatchAnalysis() {
     setMissingCols([]);
   };
 
+  // Check if the predictions span more than one day in station-local time
+  const spansMultipleDays = useMemo(() => {
+    if (!result || result.predictions.length < 2) return false;
+    const first = new Date(result.predictions[0].timestamp);
+    const last = new Date(result.predictions[result.predictions.length - 1].timestamp);
+    const firstDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(first);
+    const lastDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(last);
+    return firstDateStr !== lastDateStr || Math.abs(last.getTime() - first.getTime()) >= 24 * 3600 * 1000;
+  }, [result]);
+
   // Prepare chart data
   const chartData = useMemo(() => {
     if (!result || result.predictions.length === 0) return [];
 
-    // Check if the predictions span more than one day
-    const firstTime = new Date(result.predictions[0].timestamp).getTime();
-    const lastTime = new Date(result.predictions[result.predictions.length - 1].timestamp).getTime();
-    const firstDateStr = new Date(result.predictions[0].timestamp).toDateString();
-    const lastDateStr = new Date(result.predictions[result.predictions.length - 1].timestamp).toDateString();
-    const spansMultipleDays = firstDateStr !== lastDateStr || Math.abs(lastTime - firstTime) >= 24 * 3600 * 1000;
-
-    return result.predictions.map(p => {
-      const d = new Date(p.timestamp);
-      const hours = String(d.getHours()).padStart(2, '0');
-      const mins = String(d.getMinutes()).padStart(2, '0');
-      const timeStr = `${hours}:${mins}`;
-
-      let timeLabel: string;
-      if (spansMultipleDays) {
-        const month = d.toLocaleDateString('en-US', { month: 'short' });
-        const day = d.getDate();
-        timeLabel = `${month} ${day}, ${timeStr}`;
-      } else {
-        timeLabel = timeStr;
-      }
-
-      return {
-        ...p,
-        timeLabel,
-        critical_point: p.surge_status === 'CRITICAL' ? p.predicted_kw : null
-      };
-    });
-  }, [result]);
+    return result.predictions.map(p => ({
+      ...p,
+      timeLabel: formatBatchTimestampIST(p.timestamp, spansMultipleDays),
+      critical_point: p.surge_status === 'CRITICAL' ? p.predicted_kw : null
+    }));
+  }, [result, spansMultipleDays]);
 
   const paginatedRows = useMemo(() => {
     if (!result) return [];
@@ -331,7 +342,7 @@ export function BatchAnalysis() {
           </div>
 
           {/* Chart Overlay */}
-          <Tile className="p-6 h-100 flex flex-col">
+          <Tile className="p-6 h-[340px] sm:h-[380px] flex flex-col">
             <h2 className="font-headline-md text-text-primary mb-6">Actual vs Predicted (+2h) Timeline</h2>
             <div className="flex-1 w-full min-h-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -423,7 +434,7 @@ export function BatchAnalysis() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-outline-variant/50 font-label-mono text-text-secondary text-xs tracking-widest">
-                    <th className="pb-3 font-normal uppercase">Timestamp</th>
+                    <th className="pb-3 font-normal uppercase">Timestamp (IST)</th>
                     <th className="pb-3 font-normal uppercase text-right">Actual (t+2h) kW</th>
                     <th className="pb-3 font-normal uppercase text-right">Predicted (+2h) kW</th>
                     <th className="pb-3 font-normal uppercase text-right">Status</th>
@@ -432,7 +443,7 @@ export function BatchAnalysis() {
                 <tbody>
                   {paginatedRows.map((row, i) => (
                     <tr key={i} className="border-b border-outline-variant/30 hover:bg-surface-variant/30 transition-colors">
-                      <td className="py-3 font-label-mono text-sm text-text-primary">{new Date(row.timestamp).toISOString()}</td>
+                      <td className="py-3 font-label-mono text-sm text-text-primary">{formatBatchTimestampIST(row.timestamp, spansMultipleDays)}</td>
                       <td className="py-3 font-label-mono text-sm text-text-secondary text-right">
                         {row.actual_kw !== null ? row.actual_kw.toFixed(1) : '-'}
                       </td>

@@ -11,5 +11,8 @@ app.db
 *.sqlite3
 data/
 *.log
+.env
+.env.*
+*.env
 .git/
 .agents/

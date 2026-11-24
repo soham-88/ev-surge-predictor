@@ -56,6 +56,12 @@ async def get_metrics(current_user: User = Depends(get_current_user)) -> Metrics
             rmse_kw=xgb_metrics.get("rmse_kw", 0.0),
             surge_recall_pct=xgb_metrics.get("surge_recall_pct", 0.0),
             latency_ms=xgb_metrics.get("latency_ms", 0.0),
+            rule_a_recall_pct=xgb_metrics.get("rule_a_recall_pct"),
+            early_warning_recall_pct=xgb_metrics.get("early_warning_recall_pct"),
+            rule_a_precision_pct=xgb_metrics.get("rule_a_precision_pct"),
+            latency_model_only_ms=xgb_metrics.get("latency_model_only_ms"),
+            latency_end_to_end_ms=xgb_metrics.get("latency_end_to_end_ms"),
+            n_test_samples=xgb_metrics.get("n_test_samples"),
         ),
     ]
 
@@ -67,6 +73,12 @@ async def get_metrics(current_user: User = Depends(get_current_user)) -> Metrics
                 rmse_kw=lstm_metrics.get("rmse_kw", 0.0),
                 surge_recall_pct=lstm_metrics.get("surge_recall_pct", 0.0),
                 latency_ms=lstm_metrics.get("latency_ms", 0.0),
+                rule_a_recall_pct=lstm_metrics.get("rule_a_recall_pct"),
+                early_warning_recall_pct=lstm_metrics.get("early_warning_recall_pct"),
+                rule_a_precision_pct=lstm_metrics.get("rule_a_precision_pct"),
+                latency_model_only_ms=lstm_metrics.get("latency_model_only_ms"),
+                latency_end_to_end_ms=lstm_metrics.get("latency_end_to_end_ms"),
+                n_test_samples=lstm_metrics.get("n_test_samples"),
             )
         )
 

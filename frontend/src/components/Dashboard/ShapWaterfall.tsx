@@ -16,6 +16,49 @@ import { getFeatureReadableName } from '../../types/telemetry';
 import { Tile } from '../ui/Tile';
 import { AnimatedNumber } from '../ui/AnimatedNumber';
 
+export function computeWaterfallDomain(
+  base: number,
+  attributions: Array<{ shap_delta_kw?: number; shap_value?: number; [key: string]: any }>,
+  prediction: number
+): [number, number] {
+  const values: number[] = [base, prediction];
+  let current = base;
+
+  const sorted = [...attributions]
+    .map(a => {
+      const delta = typeof a.shap_delta_kw === 'number'
+        ? a.shap_delta_kw
+        : typeof a.shap_value === 'number'
+        ? a.shap_value
+        : 0;
+      return { delta, abs: Math.abs(delta) };
+    })
+    .sort((a, b) => b.abs - a.abs);
+
+  for (const item of sorted) {
+    current += item.delta;
+    values.push(current);
+  }
+
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const span = Math.max(1, rawMax - rawMin);
+
+  // ~8% padding
+  const padding = Math.max(2, span * 0.08);
+  const minPadded = rawMin - padding;
+  const maxPadded = rawMax + padding;
+
+  let minDomain = Math.floor(minPadded / 5) * 5;
+  let maxDomain = Math.ceil(maxPadded / 5) * 5;
+
+  if (minDomain === maxDomain) {
+    maxDomain += 5;
+  }
+
+  return [minDomain, maxDomain];
+}
+
 interface Props {
   baseValue: number;
   predictedValue: number;
@@ -89,22 +132,15 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
     return () => clearTimeout(timer);
   }, [waterfallData]);
 
-  // Compute a generous domain for the XAxis so labels outside the bar ends are never clipped
-  const allXValues = useMemo(() => {
-    const vals = [baseValue, predictedValue];
-    waterfallData.forEach(d => {
-      vals.push(d.range[0]);
-      vals.push(d.range[1]);
-    });
-    return vals;
-  }, [baseValue, predictedValue, waterfallData]);
+  // Compute a tight, padded domain for the XAxis using the pure helper
+  const [minDomain, maxDomain] = useMemo(() => {
+    return computeWaterfallDomain(baseValue, attributions, predictedValue);
+  }, [baseValue, attributions, predictedValue]);
 
-  const minVal = Math.min(...allXValues);
-  const maxVal = Math.max(...allXValues);
-  const rangeSpan = Math.max(1, maxVal - minVal);
-
-  const minDomain = Math.floor(minVal - Math.max(30, rangeSpan * 0.15));
-  const maxDomain = Math.ceil(maxVal + Math.max(45, rangeSpan * 0.22));
+  const rowHeight = 28;
+  const topMargin = 28;
+  const bottomMargin = 20;
+  const chartHeight = waterfallData.length * rowHeight + topMargin + bottomMargin;
 
   const renderCustomLabel = (props: any) => {
     const { x, y, width, height, value, index } = props;
@@ -121,30 +157,49 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
     const barLeft = Math.min(x, x + width);
     const barRight = Math.max(x, x + width);
 
-    // Place label strictly OUTSIDE the outer end of the bar with enough padding
+    // Position label just outside the outer bar end away from the line
     const labelX = isPos ? barRight + 8 : barLeft - 8;
     const labelY = y + height / 2;
 
+    const textWidth = Math.max(36, formatted.length * 6.5 + 8);
+    const chipHeight = 16;
+    const chipX = isPos ? labelX - 2 : labelX - textWidth + 2;
+    const chipY = labelY - chipHeight / 2;
+
     return (
-      <text
-        x={labelX}
-        y={labelY}
-        fill={fillColor}
-        textAnchor={isPos ? 'start' : 'end'}
-        dominantBaseline="central"
-        style={{
-          fontFamily: 'var(--font-label-mono)',
-          fontSize: '11px',
-          fontWeight: 600,
-        }}
-      >
-        {formatted}
-      </text>
+      <g className="waterfall-label-group">
+        <rect
+          x={chipX}
+          y={chipY}
+          width={textWidth}
+          height={chipHeight}
+          rx={3}
+          fill="#121318"
+          fillOpacity={0.92}
+          stroke={fillColor}
+          strokeOpacity={0.3}
+          strokeWidth={1}
+        />
+        <text
+          x={labelX}
+          y={labelY}
+          fill={fillColor}
+          textAnchor={isPos ? 'start' : 'end'}
+          dominantBaseline="central"
+          style={{
+            fontFamily: 'var(--font-label-mono)',
+            fontSize: '11px',
+            fontWeight: 600,
+          }}
+        >
+          {formatted}
+        </text>
+      </g>
     );
   };
 
   return (
-    <Tile index={0} className="md:col-span-12 flex flex-col h-full min-w-0 max-w-full overflow-hidden">
+    <Tile index={0} className="md:col-span-12 flex flex-col min-w-0 max-w-full overflow-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 border-b border-border-subtle pb-4">
         <div>
@@ -202,12 +257,12 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
       </div>
 
       {/* Chart */}
-      <div className="flex-1 w-full pt-2 pb-6 min-w-0" style={{ minHeight: `${Math.max(520, waterfallData.length * 36)}px` }}>
-        <ResponsiveContainer width="100%" height={Math.max(520, waterfallData.length * 36)}>
+      <div className="w-full pt-1 min-w-0" style={{ height: `${chartHeight}px` }}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <BarChart
             layout="vertical"
             data={waterfallData}
-            margin={{ top: 10, right: 65, left: 15, bottom: 10 }}
+            margin={{ top: topMargin, right: 65, left: 15, bottom: bottomMargin }}
             barCategoryGap="18%"
             aria-label={`SHAP feature attribution waterfall. Base load ${baseValue.toFixed(1)} kW, predicted load ${predictedValue.toFixed(1)} kW`}
           >
@@ -288,7 +343,7 @@ export function ShapWaterfall({ baseValue, predictedValue, attributions, isSimul
       </div>
 
       {/* Legend Footer & TreeSHAP Exact Match Verification */}
-      <div className="mt-4 pt-4 border-t border-border-subtle flex flex-col sm:flex-row justify-between sm:items-center gap-4 text-sm">
+      <div className="mt-3 pt-3 border-t border-border-subtle flex flex-col sm:flex-row justify-between sm:items-center gap-4 text-sm">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-status-critical inline-block" aria-hidden="true" />

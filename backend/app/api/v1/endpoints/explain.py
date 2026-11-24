@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from app.core.security import get_current_user
 from app.models.user import User
-
+from app.core.timezone import to_station_local
 from app.models.ml_engine import engine
 from app.schemas.telemetry import (
     Attribution,
@@ -25,10 +25,11 @@ router = APIRouter()
 async def explain_prediction(req: PredictRequest, current_user: User = Depends(get_current_user)) -> ExplainResponse:
     """Compute TreeSHAP attributions for the given telemetry snapshot."""
 
-    hour = req.timestamp.hour + req.timestamp.minute / 60.0
-    day_of_week = req.timestamp.weekday()
+    local_ts = to_station_local(req.timestamp)
+    hour = local_ts.hour + local_ts.minute / 60.0
+    day_of_week = local_ts.weekday()
 
-    predicted_load_kw, _, scaled_features = engine.predict(
+    predicted_load_kw, _, raw_features = engine.predict(
         ambient_temp_c=req.ambient_temp_c,
         traffic_inflow_index=req.traffic_inflow_index,
         active_plugs=req.active_plugs,
@@ -36,9 +37,11 @@ async def explain_prediction(req: PredictRequest, current_user: User = Depends(g
         load_lags_kw=req.load_lags_kw,
         hour=hour,
         day_of_week=day_of_week,
+        timestamp=local_ts,
+        prev_active_plugs=req.prev_active_plugs,
     )
 
-    base_value, attributions = engine.explain(scaled_features)
+    base_value, attributions = engine.explain(raw_features)
 
     return ExplainResponse(
         base_value_kw=round(base_value, 4),
@@ -61,6 +64,9 @@ async def explain_global(current_user: User = Depends(get_current_user)) -> Glob
     return GlobalExplainResponse(
         total_features=data["total_features"],
         sample_size=data["sample_size"],
+        n_samples=data.get("n_samples", data["sample_size"]),
+        split_name=data.get("split_name", "test"),
+        total_test_rows=data.get("total_test_rows"),
         feature_importances=[
             GlobalFeatureImportanceItem(
                 feature=item["feature"],

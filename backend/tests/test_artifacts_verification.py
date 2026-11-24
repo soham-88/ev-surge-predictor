@@ -17,5 +17,5 @@ from pipeline.verify_artifacts import verify_artifacts
 def test_model_artifacts_reproducibility():
     """Verify that stored metrics in .joblib artifacts exactly match fresh re-evaluation on both XGBoost and LSTM."""
     success = verify_artifacts()
-    assert success is True, "Artifact verification failed: re-evaluated metrics differed from stored metrics."
+    assert bool(success) is True, "Artifact verification failed: re-evaluated metrics differed from stored metrics."
 

@@ -27,11 +27,11 @@ Commercial EV charging stations can draw enough power in a short window to overl
 |---|---|
 | **Problem** | Sudden EV charging surges can breach the 250 kW transformer limit |
 | **Solution** | 2-hour-ahead forecasting, surge risk banding, explainable predictions, and demand-response tariffs |
-| **Models** | XGBoost (deployed) with TreeSHAP, PyTorch LSTM (benchmark) |
-| **Stack** | React + TypeScript + Tailwind, FastAPI, SQLite, JWT auth |
-| **Context** | Bhavan's College, CIA-2 project (BH.USCS.MAJ501) |
+| **Models** | Monotonic XGBoost (deployed) with TreeSHAP, PyTorch LSTM (benchmark) |
+| **Stack** | React 19 + TypeScript + Tailwind, FastAPI, SQLite, JWT auth |
+| **Context** | Commercial EV Depot 2-Hour Demand Response & Overload Protection |
 
-**Surge risk bands (against 250 kW capacity):** 🟢 Normal below 65% · 🟡 Warning 65 to 80% · 🔴 Critical at 80% or above (200 kW)
+**Surge risk bands (against 250 kW capacity):** 🟢 Normal below 65% (1.00x) · 🟡 Warning 65 to 80% (1.20x) · 🔴 Critical 80 to 95% (1.45x) · ⚠️ Severe ≥95% (1.80x)
 
 ---
 
@@ -57,18 +57,18 @@ Commercial EV charging stations can draw enough power in a short window to overl
 ## 🚀 Features
 
 ### 1. Control Center
-- 24-hour load timeline with actual load and a 2-hour-ahead forecast
-- **Empirical 80% Prediction Interval** (calibrated test-split residuals $q_{10} = -10.9\text{ kW}, q_{90} = +16.6\text{ kW}$) overlaid with dynamic tooltip bounds
-- **Live Telemetry Scenario Switcher**: Nominal Flow, Evening Commute (Rush Hour), Summer Heatwave Peak (Critical), and Monsoon Lull
+- Load Timeline (2h history + 2h forecast) with actual load and a 2-hour-ahead forecast
+- **Empirical 80% Prediction Interval** (calibrated validation-split binned quantiles: `<100 kW` [-19.7, +18.7], `100–160 kW` [-19.7, +20.7], `≥160 kW` [-23.0, +22.3] kW) overlaid with dynamic bounds
+- **Live Telemetry Scenario Switcher**: Nominal Midday, Evening Commute (Rush Hour), Summer Heatwave Peak (Critical), and Monsoon Lull
 - Capacity utilization gauge against the 250 kW transformer limit
-- Surge risk status with dynamic tariff multipliers (1.00x, 1.25x, 1.50x, 1.80x)
-- Mitigation panel showing throttled bays, or a readiness preview when load is normal
+- Surge risk status with dynamic tariff multipliers (1.00x, 1.20x, 1.45x, 1.80x)
+- Mitigation panel showing throttled bays (capped at 60 kW per stall), or a readiness preview when load is normal
 - **Persistent SQLite Incident Log** tracking past surge alerts and mitigations
 
 ### 2. SHAP Explainability
 - **Local Attribution (Waterfall)**: TreeSHAP waterfall from base value to final prediction, one bar per feature
-- **Global Feature Importance**: Dataset-wide mean absolute SHAP attributions ($E[|\phi_j|]$) ranking all 15 drivers by predictive power
-- Additivity check in the UI: base value + sum of 15 SHAP values = model prediction
+- **Global Feature Importance**: Dataset-wide mean absolute SHAP attributions ($E[|\phi_j|]$) ranking all 17 drivers by predictive power
+- Additivity check in the UI: base value + sum of 17 SHAP values = model prediction
 - Auto-generated sentence naming the top contributing drivers
 - XGBoost vs LSTM comparison table (MAE, RMSE, surge recall, latency)
 
@@ -116,16 +116,17 @@ flowchart TD
         TariffSvc["Vehicle tariff service"]
     end
 
-    subgraph ML["ML pipeline"]
-        XGB["XGBoost regressor, 15 features"]
-        SHAP["TreeSHAP explainer"]
-        LSTM["PyTorch LSTM benchmark"]
+    subgraph ML["ML pipeline (Model v2)"]
+        XGB["XGBoost regressor (xgb_v2b, 17 features, monotone)"]
+        SHAP["TreeSHAP explainer (local & global)"]
+        LSTM["PyTorch LSTM benchmark (lstm_v2, seq_len=8)"]
+        HOW["Hour-of-Week Mean Table (168 cells, train-only)"]
     end
 
     subgraph Data["Data and storage"]
         Weather["Open-Meteo API, live Mumbai temperature"]
-        DB[("SQLite: users")]
-        Synth["synthesize_telemetry, 90 days"]
+        DB[("SQLite: users, incidents")]
+        Synth["generator_v2, 730 days, seed 42"]
     end
 
     UI --> Pages
@@ -138,27 +139,63 @@ flowchart TD
     Router --> Weather
     Engine --> XGB
     Engine --> SHAP
+    Engine --> HOW
     Engine -.-> LSTM
-    Synth -->|"training data"| XGB
+    Synth -->|"purged train split (510 days)"| XGB
+    Synth -->|"train split (510 days)"| HOW
 ```
 
 ---
 
 ## 📊 Model Results
 
-Evaluated on the same held-out split (1,726 samples) from the 90-day feature pipeline.
+Evaluated on the held-out test split (110 days, stratified by day type, with boundary purge ensuring no lag window or target crosses split days).
 
-| Metric | XGBoost (deployed) | PyTorch LSTM (benchmark) |
-|---|---|---|
-| MAE | 8.81 kW | 8.64 kW |
-| RMSE | 11.11 kW | 10.88 kW |
-| Surge recall | **91.5%** | 89.8% |
-| Inference latency | **0.45 ms / sample** | 0.56 ms / sample |
-| Explainability | **Exact TreeSHAP** | Black box |
+### 1. Benchmark Forecaster Comparison (Full Test Split: 9,480 Timestamps)
 
-> **Why XGBoost is deployed:** Accuracy is comparable between both models, but XGBoost achieves higher surge recall (91.5% vs 89.8%) and provides exact, auditable TreeSHAP feature attributions critical for real-time grid operator decisions. The LSTM serves strictly as an offline benchmark and is not served by any live inference endpoint.
->
-> **Benchmark note:** The LSTM benchmark was re-trained and re-evaluated with automated round-trip verification against disk artifacts; earlier reported LSTM figures (MAE 7.23 kW, 100% recall) were from an unverified reference and were not reproducible.
+| Model | MAE | RMSE | Rule A Rec ($\ge 200\text{ kW}$) | Rule A Prec | Rule B Rec ($\ge 162.5\text{ kW}$) | Rule B Prec |
+|---|---|---|---|---|---|---|
+| **Persistence** ($\text{lag}_{15\text{m}}$) | 40.30 kW | 49.24 kW | 30.9% | 30.9% | 57.0% | 26.9% |
+| **Plain Hour-of-Week Mean** | 20.28 kW | 25.38 kW | 71.4% | 75.0% | 93.2% | 55.8% |
+| **Baseline 3** (AR(1) Anomaly) | 14.51 kW | 18.17 kW | 63.7% | **89.5%** | 97.8% | **57.2%** |
+| **XGBoost** (`xgb_v2b`, deployed) | **12.65 kW** | **15.90 kW** | **81.9%** | 84.7% | 99.6% | 49.7% |
+
+### 2. XGBoost vs. LSTM Benchmark Comparison (9,210 Aligned Test Sequences)
+
+Evaluated on the exact same 9,210 sequence-aligned test instances (requiring an 8-step past history window) from `saved_models/training_metrics.joblib` and `lstm_metrics.joblib`:
+
+| Model | MAE | RMSE | Rule A Rec ($\ge 200\text{ kW}$) | Rule A Prec | Rule B Rec ($\ge 162.5\text{ kW}$) | Rule B Prec | Latency (Model-Only) | Latency (End-to-End) |
+|---|---|---|---|---|---|---|---|---|
+| **XGBoost** (`xgb_v2b`, deployed) | **12.67 kW** | **15.93 kW** | **81.9%** | 84.7% | 99.6% | 49.3% | 1.15 ms | 6.3 ms |
+| **PyTorch LSTM** (`lstm_v2`, benchmark) | 12.94 kW | 16.32 kW | 78.8% | **86.4%** | **99.7%** | 48.7% | **0.20 ms** | **0.44 ms** |
+
+*Why XGBoost is deployed for live serving:*
+- Accuracy is comparable between both models on the same test set (12.67 kW vs 12.94 kW MAE), with XGBoost achieving slightly higher Rule A surge recall (81.9% vs 78.8%).
+- XGBoost provides exact, real-time TreeSHAP local attributions ($\sum \phi_j = \hat{y} - \phi_0$) for operators.
+- XGBoost supports mathematically enforced monotone constraints to prevent counter-intuitive forecast drops during load surges.
+- XGBoost enables stateless single-row HTTP inference without maintaining a multi-step sequence buffer in memory.
+
+### Alert Rule Definitions
+- **Rule A (Surge Alert / Critical)**: Actual or forecast load $\ge 200.0\text{ kW}$ (80% of 250 kW transformer capacity). Triggers automated throttling and critical tariff escalation. High precision (84.7%) avoids disruptive false alarms.
+- **Rule B (Early Warning / Advisory)**: Forecast load $\ge 162.5\text{ kW}$ (65% of 250 kW transformer capacity). Intentionally calibrated for ultra-high recall (99.6%) to give operators a 2-hour lead time before a potential overload occurs.
+
+### Prediction Interval Calibration
+An empirical 80% prediction interval is calibrated on validation residuals across 3 load regimes:
+- **$< 100\text{ kW}$**: $[-19.69\text{ kW}, +18.71\text{ kW}]$ (width: 38.40 kW, test coverage: 80.34%)
+- **$100\text{ to } 160\text{ kW}$**: $[-19.67\text{ kW}, +20.71\text{ kW}]$ (width: 40.37 kW, test coverage: 78.97%)
+- **$\ge 160\text{ kW}$**: $[-23.00\text{ kW}, +22.32\text{ kW}]$ (width: 45.32 kW, test coverage: 79.51%)
+- **Overall Coverage**: **79.78%** on held-out test data (within $\pm 3\text{ pp}$ of 80% target).
+
+### Monotone Property
+Partial monotonicity is enforced on 7 features (`load_lag_15m`, `load_lag_30m`, `load_lag_45m`, `load_lag_60m`, `rolling_mean_60m`, `load_anomaly`, `lag_trend`) using XGBoost `monotone_constraints`. Property testing across 300 random test samples with $\max(\text{lag}) \le 190\text{ kW}$ swept $0\text{ to }+100\text{ kW}$ yields **0 violations** when all 4 lags are swept together. Sweeping `load_lag_15m` alone yields a minor drop ($< 3.5\text{ kW}$) because `rolling_std_60m` is unconstrained.
+
+### Key Limitations
+1. **Synthetic Telemetry**: Indian public commercial EV telemetry is not publicly available; data is generated using `generator_v2.py` (730 days / 70,080 timestamps at 15-min intervals, station-local time, seed 42) parameterized for an 8-bay fast-charging depot.
+2. **Event Day Sample**: The 110-day test set contains 9 event days (153 evening peak steps between 17:00 and 21:00).
+3. **Stateless Live Inference**: The live API runs single-step inference; the LSTM benchmark window (seq_len=8) is evaluated offline.
+4. **Tariff Simulation**: Dynamic tariffs are simulated for demand-response demonstration and not yet wired to live OCPP 2.0.1 chargers.
+
+For complete mathematical definitions, feature tables, and reproduction commands, see [docs/MODEL_V2.md](docs/MODEL_V2.md).
 
 ---
 
@@ -166,24 +203,44 @@ Evaluated on the same held-out split (1,726 samples) from the 90-day feature pip
 
 | Signal | Source |
 |---|---|
-| Ambient temperature | **Live and real**, from the Open-Meteo API for Mumbai (19.0760 N, 72.8777 E), cached 10 minutes |
-| Charging load, traffic index, grid frequency, active plugs | **Synthetic**, generated by `synthesize_telemetry()` |
+| Ambient temperature | **Live and real**, from Open-Meteo API for Mumbai (19.0760 N, 72.8777 E), cached 10 minutes (rendered as live chip in header) |
+| Charging load, traffic index, grid frequency, active plugs | **Synthetic**, generated by `generator_v2.py` (seed 42, 730 days) |
+| Scenario Presets | **Curated canonical inputs** (Nominal Midday, Evening Rush, Heatwave Peak, Monsoon Lull) |
 
-Detailed public EV charging data for India is not available, so 90 days of 15-minute telemetry (8,640 timestamps) were synthesized with realistic daily commuting patterns and temperature dependence. Grid frequency is synthetic around the Indian 50 Hz nominal. The dashboard's "live" feed is a continuously updating simulation of this kind; only temperature comes from a real external source.
-
-**15 engineered features:** ambient temperature, traffic inflow index, active plugs, plug delta (15 min), grid frequency, load lags (15, 30, 45, 60 min), rolling mean and std (60 min), and cyclical time encodings (hour and day, sin and cos).
+**17 engineered features:** ambient temperature, traffic inflow index, active plugs, plug delta (15 min), grid frequency, load lags (15, 30, 45, 60 min), rolling mean and std (60 min), cyclical time encodings (hour and day sin/cos), load anomaly (vs train-only hour-of-week table), and lag trend.
 
 ---
 
 ## 💻 Local Setup
 
-### 🐳 Quick Start with Docker (Recommended)
-Run the entire stack (FastAPI backend + Nginx React frontend) with a single command:
-```bash
-docker compose up --build
-```
-- **Frontend**: http://localhost:3000 (or http://localhost:80)
-- **Backend API Docs**: http://localhost:8000/docs
+### 🐳 Run with Docker (Recommended)
+
+Run the entire containerized stack (FastAPI backend + Nginx reverse proxy & React frontend) with persistent SQLite storage:
+
+**Prerequisites:** Docker Engine 24+ & Docker Compose v2+ installed and running.
+
+1. **Start the stack:**
+   ```bash
+   docker compose up --build
+   ```
+2. **Access URLs:**
+   - **Frontend Dashboard**: [http://localhost](http://localhost) (or [http://localhost:3000](http://localhost:3000))
+   - **Backend Healthcheck**: [http://localhost/health](http://localhost/health) (or [http://localhost:8000/health](http://localhost:8000/health))
+   - **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)
+3. **Demo accounts:**
+   - **Operator**: `operator` / `operatorpassword123` (Full access, Sandbox simulation, incident audit logs)
+   - **Viewer**: `viewer` / `viewerpassword123` (Read-only)
+
+> **Security Note:** `docker-compose.yml` defaults `JWT_SECRET` to `"dev-only-insecure-change-me"`; for production deployments, always set a strong custom key via the `JWT_SECRET` environment variable.
+
+4. **Stop and reset:**
+   ```bash
+   # Stop containers while preserving the SQLite database volume
+   docker compose down
+
+   # Stop containers and reset the database volume (resets incident logs and users)
+   docker compose down -v
+   ```
 
 ---
 
@@ -262,7 +319,7 @@ Sample CSV files for testing the **Batch Analysis** page (`POST /api/v1/predict/
 | GET | `/api/v1/auth/me` | Authenticated | Current user and role |
 | POST | `/api/v1/predict` | Authenticated | 2-hour-ahead load prediction and surge risk |
 | POST | `/api/v1/explain` | Authenticated | TreeSHAP feature attributions |
-| GET | `/api/v1/explain/global` | Authenticated | Global TreeSHAP feature importances across 15 drivers |
+| GET | `/api/v1/explain/global` | Authenticated | Global TreeSHAP feature importances across 17 drivers |
 | POST | `/api/v1/simulate` | Operator | What-if grid stress simulation |
 | GET | `/api/v1/metrics` | Authenticated | XGBoost and LSTM evaluation metrics |
 | POST | `/api/v1/predict/batch` | Authenticated | Batch CSV prediction |
@@ -319,10 +376,13 @@ ev-surge-predictor/
 
 ---
 
-## 👥 Team
+## 👥 Team & Contributions
 
-Built as a team project at **Bhavan's College, Mumbai** (CIA-2, Course Code BH.USCS.MAJ501).
+This repository was developed as a collaborative team engineering project.
 
+- **My Contribution:** [Placeholder: Add specific module/system contributions here, e.g., ML forecasting pipeline, TreeSHAP integration, FastAPI backend architecture, and verification suite].
+
+### Team Members
 | Name |
 |---|
 | **Soham Pawar** ([@soham-88](https://github.com/soham-88)) |

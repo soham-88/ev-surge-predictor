@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { api } from '../services/api';
 import type { PredictResponse, ExplainResponse, SimulateResponse, MetricsResponse } from '../types/telemetry';
 import { useMockTelemetry } from '../hooks/useMockTelemetry';
-import { TELEMETRY_SCENARIOS, type TelemetryScenario } from '../services/telemetryScenarios';
+import { TELEMETRY_SCENARIOS, buildScenarioPayload, type TelemetryScenario } from '../services/telemetryScenarios';
 
 export interface ToastMessage {
   id: string;
@@ -146,10 +146,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setErrorMessage(null);
 
     const targetScen = activeScenarioRef.current;
+    const scenPayload = buildScenarioPayload(targetScen);
     try {
       const [pRes, eRes, sRes, mRes] = await Promise.all([
-        api.predict(targetScen.telemetry),
-        api.explain(targetScen.telemetry),
+        api.predict(scenPayload),
+        api.explain(scenPayload),
         api.simulate({ temp_delta_c: 0, traffic_surge_pct: 0, forced_outage_stalls: [] })
           .catch(err => {
             // Viewers (403 Forbidden) do not have permission to run simulations.
@@ -231,8 +232,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const interval = setInterval(async () => {
       try {
-        const currentTelemetry = activeScenarioRef.current.telemetry;
-        const pRes = await api.predict(currentTelemetry);
+        const currentPayload = buildScenarioPayload(activeScenarioRef.current);
+        const pRes = await api.predict(currentPayload);
         const rtt = api.getLastPredictLatency();
         setRealLatencyMs(rtt);
         setPredictData(pRes);
